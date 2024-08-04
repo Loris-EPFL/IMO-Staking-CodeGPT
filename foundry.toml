@@ -2,7 +2,7 @@
 src = "src"
 out = "out"
 libs = ["lib"]
-remappings = ['ds-test/=lib/ds-test/src/','forge-std/=lib/forge-std/src/', '@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/', '@openzeppelin/=@openzeppelin/contracts-upgradeable/lib/']                                               # a list of remappings
+remappings = ['ds-test/=lib/ds-test/src/','forge-std/=lib/forge-std/src/', '@openzeppelin/=lib/openzeppelin-contracts/contracts/']                                               # a list of remappings
 
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

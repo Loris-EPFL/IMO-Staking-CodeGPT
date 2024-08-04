@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.17;
 
-import { AccessControlUpgradeable } from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import { IERC20Upgradeable } from "@openzeppelin/contracts-upgradeable/interfaces/IERC20Upgradeable.sol";
-import { SafeERC20Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
-import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import { AccessControl } from "@openzeppelin/access/AccessControl.sol";
+import { IERC20 } from "@openzeppelin/interfaces/IERC20.sol";
+import { SafeERC20 } from "@openzeppelin/token/ERC20/utils/SafeERC20.sol";
+import { Pausable } from "@openzeppelin/utils/Pausable.sol";
+import {Initializable} from "@openzeppelin/proxy/utils/Initializable.sol";
 import { IDecubateMasterChef } from "./interfaces/IDecubateMasterChef.sol";
 
 /**
  * @title DCBVault
  * @dev Vault contract for managing user deposits, staking, and rewards distribution
  */
-contract DCBVault is AccessControlUpgradeable, PausableUpgradeable {
-  using SafeERC20Upgradeable for IERC20Upgradeable;
+contract DCBVault is AccessControl, Pausable, Initializable {
+  using SafeERC20 for IERC20;
 
   struct UserInfo {
     uint256 shares; // number of shares for a user
@@ -96,9 +97,8 @@ contract DCBVault is AccessControlUpgradeable, PausableUpgradeable {
    */
   function initialize(IDecubateMasterChef _masterchef, address _admin) external initializer {
     require(address(_masterchef) != address(0), "Zero address");
-    __AccessControl_init();
-    _setupRole(DEFAULT_ADMIN_ROLE, _admin);
-    _setupRole(MANAGER_ROLE, _admin);
+    grantRole(DEFAULT_ADMIN_ROLE, _admin);
+    grantRole(MANAGER_ROLE, _admin);
 
     masterchef = IDecubateMasterChef(_masterchef);
     callFee = 25;
@@ -127,7 +127,7 @@ contract DCBVault is AccessControlUpgradeable, PausableUpgradeable {
     require(_amount > 0, "Nothing to deposit");
 
     PoolInfo storage pool = pools[_pid];
-    IERC20Upgradeable token;
+    IERC20 token;
     {
       (
         ,
@@ -143,7 +143,7 @@ contract DCBVault is AccessControlUpgradeable, PausableUpgradeable {
       uint256 stopDepo = endDate - (lockPeriodInDays * 1 days);
       require(block.timestamp <= stopDepo, "Staking disabled for this pool");
 
-      token = IERC20Upgradeable(tokenOfPool);
+      token = IERC20(tokenOfPool);
     }
 
     uint256 poolBal = balanceOf(_pid);
@@ -329,7 +329,7 @@ contract DCBVault is AccessControlUpgradeable, PausableUpgradeable {
     pool.totalShares -= _shares;
     user.totalClaimed += totalReward + multipliedAmount; //With NFT Boost
 
-    IERC20Upgradeable token = getTokenOfPool(_pid);
+    IERC20 token = getTokenOfPool(_pid);
     masterchef.unStake(_pid, currentAmount);
 
     (, uint256 lockPeriod, , , , , ) = masterchef.poolInfo(_pid);
@@ -351,7 +351,7 @@ contract DCBVault is AccessControlUpgradeable, PausableUpgradeable {
    */
   function harvest(uint256 _pid) public notContract whenNotPaused {
     PoolInfo storage pool = pools[_pid];
-    IERC20Upgradeable token = getTokenOfPool(_pid);
+    IERC20 token = getTokenOfPool(_pid);
 
     uint256 prevBal = token.balanceOf(address(this));
     masterchef.claim(_pid);
@@ -423,8 +423,8 @@ contract DCBVault is AccessControlUpgradeable, PausableUpgradeable {
    * @param _pid Pool id
    * @return Token of the pool
    */
-  function getTokenOfPool(uint256 _pid) internal view returns (IERC20Upgradeable) {
+  function getTokenOfPool(uint256 _pid) internal view returns (IERC20) {
     (, , , , , , address token) = masterchef.poolInfo(_pid);
-    return IERC20Upgradeable(token);
+    return IERC20(token);
   }
 }
