@@ -7,12 +7,14 @@ import { SafeERC20 } from "@openzeppelin/token/ERC20/utils/SafeERC20.sol";
 import { Pausable } from "@openzeppelin/utils/Pausable.sol";
 import {Initializable} from "@openzeppelin/proxy/utils/Initializable.sol";
 import { IDecubateMasterChef } from "./interfaces/IDecubateMasterChef.sol";
+import {ABalancer} from "./balancer/zapper/ABalancer.sol";
+import {Ownable} from "@openzeppelin/access/Ownable.sol";
 
 /**
  * @title DCBVault
  * @dev Vault contract for managing user deposits, staking, and rewards distribution
  */
-contract DCBVault is AccessControl, Pausable, Initializable {
+contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
   using SafeERC20 for IERC20;
 
   struct UserInfo {
@@ -87,7 +89,7 @@ contract DCBVault is AccessControl, Pausable, Initializable {
   }
 
   /// @custom:oz-upgrades-unsafe-allow constructor
-  constructor() {
+  constructor(address initialOwner) Ownable(initialOwner) {
     _disableInitializers();
   }
 
