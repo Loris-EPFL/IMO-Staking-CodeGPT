@@ -9,6 +9,7 @@ import {Initializable} from "@openzeppelin/proxy/utils/Initializable.sol";
 import { IDecubateMasterChef } from "./interfaces/IDecubateMasterChef.sol";
 import {ABalancer} from "./balancer/zapper/ABalancer.sol";
 import {Ownable} from "@openzeppelin/access/Ownable.sol";
+import {IWETH} from "./balancer/interfaces/IWETH.sol";
 
 /**
  * @title DCBVault
@@ -75,6 +76,12 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
   event DepositFee(address feeReceiver, uint256 depositFee);
   event ManagerRoleSet(address _user, bool _status);
 
+  error NoBalance();
+  error NullAmount();
+  error IncorrectAmount();
+  error AddressZero();
+  error NotApproved();
+
   modifier onlyManager() {
     require(hasRole(MANAGER_ROLE, msg.sender), "Only manager");
     _;
@@ -120,6 +127,109 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     emit ManagerRoleSet(_user, _status);
   }
 
+  function zapEtherAndStakeIMO(uint256 _pid)
+        external
+        payable
+        nonReentrant()
+        returns (uint256 stakedAmount)
+    {
+      if (msg.sender == address(0)) revert AddressZero();
+      if (msg.value == 0) revert NullAmount();
+      if(paused()) revert EnforcedPause();
+      
+        PoolInfo storage pool = pools[_pid];
+
+        (
+          ,
+          uint256 lockPeriodInDays,
+          uint256 totalDeposit,
+          ,
+          uint256 endDate,
+          uint256 hardCap,
+          address stakeToken,
+          
+        ) = masterchef.poolInfo(_pid);
+
+        uint256 stopDepo = endDate - (lockPeriodInDays * 1 days);
+        require(block.timestamp <= stopDepo, "Staking disabled for this pool");
+
+        IERC20 stakeTokenERC = IERC20(stakeToken);
+
+        uint256 bptBalanceBefore = stakeTokenERC.balanceOf(address(this));
+
+        uint256 EthToZap = (msg.value * 80) /100;
+
+        IWETH(0x4200000000000000000000000000000000000006).deposit{value: msg.value}();
+        bool isVaultApproved = IWETH(0x4200000000000000000000000000000000000006).approve(vault, msg.value);
+        if(!isVaultApproved) revert NotApproved();
+        uint256 EthAmount = msg.value - EthToZap;
+
+        if(EthToZap == 0 || EthAmount == 0) revert IncorrectAmount();
+
+        //zap eth to IMO
+        uint256 ImoAmount = ethToImo(EthToZap, 0, address(this), address(this)); 
+        if(ImoAmount == 0) revert IncorrectAmount();
+
+        //uint256 ImoEthBpt = queryJoinImoPool(EthAmount, ImoAmount, address(this), address(this));
+
+        //join imo pool (IMO is given from Vault internal Balance, WETH is given from here)
+        joinImoPool(EthAmount, ImoAmount, address(this), address(this));
+
+
+        //TODO implement queryJoin to know BPT tokens balance in advance
+        
+        //if(ImoEthBpt == 0) revert IncorrectAmount();
+
+        // Stake the received BPT tokens
+        stakedAmount = stakeTokenERC.balanceOf(address(this)) - bptBalanceBefore; //get new BPT balance of contract
+        if(stakedAmount == 0 || totalDeposit + stakedAmount <= hardCap) revert IncorrectAmount();
+
+        uint256 poolBal = balanceOf(_pid);
+        poolBal += masterchef.payout(_pid, address(this));
+        //stakeTokenERC.safeTransferFrom(msg.sender, address(this), _amount);
+
+        if (fee.depositFee > 0) {
+          uint256 feeAmount = (stakedAmount * fee.depositFee) / DIVISOR;
+          stakeTokenERC.safeTransfer(fee.feeReceiver, feeAmount);
+          stakedAmount -= feeAmount;
+          emit DepositFee(fee.feeReceiver, feeAmount);
+        }
+
+        uint256 currentShares = 0;
+
+        if (pool.totalShares != 0) {
+          currentShares = (stakedAmount * pool.totalShares) / poolBal;
+        } else {
+          stakeTokenERC.approve(address(masterchef), type(uint256).max);
+          currentShares = stakedAmount;
+        }
+
+        UserInfo storage user = users[_pid][msg.sender];
+
+        user.shares += currentShares;
+        user.lastDepositedTime = block.timestamp;
+        user.totalInvested += stakedAmount;
+
+        pool.totalShares += currentShares;
+        pool.pendingClaim += stakedAmount;
+
+        _earn(_pid);
+
+        uint256 rebateAmount = (stakedAmount * rebates[_pid].rebatePercent) / DIVISOR;
+        if (rebateAmount > 0) {
+          uint256 total = balanceOf(_pid);
+          uint256 balance = stakeTokenERC.balanceOf(address(masterchef));
+          require(balance - total >= rebateAmount, "Not enough rebate balance");
+          stakeTokenERC.safeTransferFrom(address(masterchef), msg.sender, rebateAmount);
+
+          emit RebateSent(msg.sender, _pid, rebateAmount);
+        }
+
+        emit Deposit(msg.sender, _pid, stakedAmount, block.timestamp);
+            
+    }
+
+
   /**
    * @notice Deposits tokens into the DCB Vault
    * @param _pid Pool id
@@ -139,7 +249,6 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
         uint256 endDate,
         uint256 hardCap,
         address stakeToken,
-        address rewardsToken
       ) = masterchef.poolInfo(_pid);
 
       require(totalDeposit + _amount <= hardCap, "Pool full");
