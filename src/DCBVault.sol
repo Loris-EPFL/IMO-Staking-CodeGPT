@@ -136,14 +136,15 @@ contract DCBVault is AccessControl, Pausable, Initializable {
         ,
         uint256 endDate,
         uint256 hardCap,
-        address tokenOfPool
+        address stakeToken,
+        address rewardsToken
       ) = masterchef.poolInfo(_pid);
 
       require(totalDeposit + _amount <= hardCap, "Pool full");
       uint256 stopDepo = endDate - (lockPeriodInDays * 1 days);
       require(block.timestamp <= stopDepo, "Staking disabled for this pool");
 
-      token = IERC20(tokenOfPool);
+      token = IERC20(stakeToken);
     }
 
     uint256 poolBal = balanceOf(_pid);
@@ -332,7 +333,7 @@ contract DCBVault is AccessControl, Pausable, Initializable {
     IERC20 token = getTokenOfPool(_pid);
     masterchef.unStake(_pid, currentAmount);
 
-    (, uint256 lockPeriod, , , , , ) = masterchef.poolInfo(_pid);
+    (, uint256 lockPeriod, , , , , ,) = masterchef.poolInfo(_pid);
     if (block.timestamp < user.lastDepositedTime + (lockPeriod * 1 days)) {
       uint256 penalty = (currentAmount * rebates[_pid].earlyWithdrawPenalty) / DIVISOR;
       token.safeTransfer(address(masterchef), penalty);
@@ -389,7 +390,7 @@ contract DCBVault is AccessControl, Pausable, Initializable {
    */
   function canUnstake(address _user, uint256 _pid) public view returns (bool) {
     UserInfo storage user = users[_pid][_user];
-    (, uint256 lockPeriod, , , , , ) = masterchef.poolInfo(_pid);
+    (, uint256 lockPeriod, , , , , ,) = masterchef.poolInfo(_pid);
 
     return (block.timestamp >= user.lastDepositedTime + (lockPeriod * 1 days) ||
       rebates[_pid].isEarlyWithdrawActive);
@@ -424,7 +425,7 @@ contract DCBVault is AccessControl, Pausable, Initializable {
    * @return Token of the pool
    */
   function getTokenOfPool(uint256 _pid) internal view returns (IERC20) {
-    (, , , , , , address token) = masterchef.poolInfo(_pid);
+    (, , , , , , address token,) = masterchef.poolInfo(_pid);
     return IERC20(token);
   }
 }

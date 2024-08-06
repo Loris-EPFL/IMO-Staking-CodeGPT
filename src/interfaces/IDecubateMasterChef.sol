@@ -46,7 +46,9 @@ interface IDecubateMasterChef {
     uint256 _lockPeriodInDays,
     uint256 _endDate,
     uint256 _hardCap,
-    address token
+    address stakeToken,
+    address rewardsToken
+
   ) external;
 
   function set(
@@ -56,7 +58,8 @@ interface IDecubateMasterChef {
     uint256 _endDate,
     uint256 _hardCap,
     uint256 _maxTransfer,
-    address token
+    address _stakeToken
+
   ) external;
 
   function setNFT(
@@ -107,7 +110,9 @@ interface IDecubateMasterChef {
       uint256 startDate,
       uint256 endDate,
       uint256 hardCap,
-      address token
+      address stakeToken,
+      address rewardsToken
+
     );
 
   function users(
