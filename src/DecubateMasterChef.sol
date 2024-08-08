@@ -105,14 +105,14 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
-    _disableInitializers();
+    
   }
 
   // Initializer
   function initialize(address _admin) external initializer {
-    grantRole(DEFAULT_ADMIN_ROLE, _admin);
-    grantRole(MANAGER_ROLE, _admin);
-    grantRole(MANAGER_ROLE, msg.sender);
+    _grantRole(DEFAULT_ADMIN_ROLE, _admin);
+    _grantRole(MANAGER_ROLE, _admin);
+    _grantRole(MANAGER_ROLE, msg.sender);
 
     feeAddress = msg.sender;
     feePercent = 5;
