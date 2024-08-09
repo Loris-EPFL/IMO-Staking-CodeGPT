@@ -97,7 +97,6 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(address initialOwner) Ownable(initialOwner) {
-    //_disableInitializers();
   }
 
   /**
@@ -169,19 +168,12 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
 
         if(EthToZap == 0 || EthAmount == 0) revert IncorrectAmount();
 
-        //zap eth to IMO
+        //Zap eth to IMO
         uint256 ImoAmount = ethToImo(EthToZap, 0, address(this), address(this)); 
         if(ImoAmount == 0) revert IncorrectAmount();
 
-        //uint256 ImoEthBpt = queryJoinImoPool(EthAmount, ImoAmount, address(this), address(this));
-
-        //join imo pool (IMO is given from Vault internal Balance, WETH is given from here)
+        //Join imo pool (IMO is given from Vault internal Balance, WETH is given from here)
         joinImoPool(EthAmount, ImoAmount, address(this), address(this));
-
-
-        //TODO implement queryJoin to know BPT tokens balance in advance
-        
-        //if(ImoEthBpt == 0) revert IncorrectAmount();
 
         // Stake the received BPT tokens
         stakedAmount = stakeTokenERC.balanceOf(address(this)) - bptBalanceBefore; //get new BPT balance of contract
@@ -189,7 +181,6 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
 
         uint256 poolBal = balanceOf(_pid);
         poolBal += masterchef.payout(_pid, address(this));
-        //stakeTokenERC.safeTransferFrom(msg.sender, address(this), _amount);
 
         uint256 currentShares = 0;
 
@@ -211,8 +202,8 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
 
         _earn(_pid);
 
-
         emit Deposit(msg.sender, _pid, stakedAmount, block.timestamp);
+        return(stakedAmount);
             
     }
 
@@ -246,15 +237,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     }
 
     uint256 poolBal = balanceOf(_pid);
-    //poolBal += masterchef.payout(_pid, address(this));
     token.safeTransferFrom(msg.sender, address(this), _amount);
-
-    if (fee.depositFee > 0) {
-      uint256 feeAmount = (_amount * fee.depositFee) / DIVISOR;
-      token.safeTransfer(fee.feeReceiver, feeAmount);
-      _amount -= feeAmount;
-      emit DepositFee(fee.feeReceiver, feeAmount);
-    }
 
     uint256 currentShares = 0;
 
@@ -275,17 +258,6 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     pool.pendingClaim += _amount;
 
     _earn(_pid);
-    /*
-    uint256 rebateAmount = (_amount * rebates[_pid].rebatePercent) / DIVISOR;
-    if (rebateAmount > 0) {
-      uint256 total = balanceOf(_pid);
-      uint256 balance = token.balanceOf(address(masterchef));
-      require(balance - total >= rebateAmount, "Not enough rebate balance");
-      token.safeTransferFrom(address(masterchef), msg.sender, rebateAmount);
-
-      emit RebateSent(msg.sender, _pid, rebateAmount);
-    }
-    */
 
     emit Deposit(msg.sender, _pid, _amount, block.timestamp);
   }
@@ -421,19 +393,12 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     require(canUnstake(msg.sender, _pid), "Stake still locked");
 
     uint256 currentAmount = (balanceOf(_pid) * _shares) / pool.totalShares;
-    emit Withdraw(msg.sender, _pid, balanceOf(_pid), block.timestamp);
-    emit Withdraw(msg.sender, _pid, _shares, block.timestamp);
-    emit Withdraw(msg.sender, _pid, pool.totalShares, block.timestamp);
-
-
-
+  
     uint256 totalReward = currentAmount - (user.totalInvested * _shares) / user.shares;
-    //uint256 multipliedAmount = masterchef.handleNFTMultiplier(_pid, msg.sender, totalReward);
 
     user.totalInvested -= (user.totalInvested * _shares) / user.shares;
     user.shares -= _shares;
     pool.totalShares -= _shares;
-    //user.totalClaimed += totalReward + multipliedAmount; //With NFT Boost
    
     IERC20 token = getTokenOfPool(_pid);
     masterchef.unStake(_pid, currentAmount);
@@ -459,40 +424,25 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     PoolInfo storage pool = pools[_pid];
     IERC20 token = getRewardTokenOfPool(_pid);
 
-    
-
     uint256 prevBal = token.balanceOf(address(this));
     uint256 prevBalMasterChef = token.balanceOf(msg.sender);
 
-    bool canClaim = masterchef.canClaim(_pid, msg.sender);
+    masterchef.canClaim(_pid, msg.sender);
     bool isClaimSuccess = masterchef.claim(_pid);
-    require(canClaim, "Claim failed");
-
-    
+    require(isClaimSuccess, "Claim failed");
     
     uint256 claimed = token.balanceOf(address(this)) - prevBal;
     if (claimed == 0) revert NoBalance();
-    
     
     uint256 currentCallFee = (claimed * callFee) / DIVISOR;
     claimed -= currentCallFee;
     pool.lastHarvestedTime = block.timestamp;
     pool.pendingClaim += claimed;
-    if (currentCallFee > 0) {
-      token.safeTransfer(msg.sender, currentCallFee);
-    }
 
     SafeERC20.safeTransfer(token, msg.sender, claimed);
 
-    //do not autocompound (since stake token and reward token are different)
-    //_earn(_pid);
-    
-
     emit Harvest(msg.sender, _pid, block.timestamp);
 
-    
-
-  
   }
 
   /**

@@ -105,7 +105,6 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
-    //_disableInitializers();
   }
 
   // Initializer
@@ -229,7 +228,8 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     uint256 _endDate,
     uint256 _hardCap,
     uint256 _maxTransfer,
-    address _stakeToken
+    address _stakeToken,
+    address _rewardsToken
   ) external override onlyManager {
     require(_pid < poolLength(), "Invalid Id");
 
@@ -237,6 +237,8 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     poolInfo[_pid].lockPeriodInDays = _lockPeriodInDays;
     poolInfo[_pid].endDate = _endDate;
     poolInfo[_pid].hardCap = _hardCap;
+    poolInfo[_pid].stakeToken = _stakeToken;
+    poolInfo[_pid].rewardsToken = _rewardsToken;
 
     maxTransferAmount[poolInfo[_pid].stakeToken] = _maxTransfer;
 
@@ -296,8 +298,6 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
 
     token.safeTransferFrom(msg.sender, address(this), _amount);
 
-    //reinvest(_pid); Not needed as stakeTokens are different from RewardsTokens
-
     _stake(_pid, msg.sender, _amount, false);
 
     return true;
@@ -343,7 +343,6 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
 
   function claim(uint256 _pid) external override returns (bool) {
     require(canClaim(_pid, msg.sender), "Reward still locked");
-
 
     _claim(_pid, msg.sender);
 
@@ -578,19 +577,12 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     Pool memory pool = poolInfo[_pid];
 
     uint256 amount = payout(_pid, _addr);
-
-    emit Claim(_addr, _pid, amount, block.timestamp);
-
     
-
-
     if (amount > 0) {
       
       _checkEnoughRewards(_pid, amount);
       
-
       user.totalWithdrawn = user.totalWithdrawn + amount;
-
     
       uint256 feeAmount = (amount * feePercent) / 1000;
 
