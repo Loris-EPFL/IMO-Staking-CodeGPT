@@ -58,7 +58,9 @@ interface IDecubateMasterChef {
     uint256 _endDate,
     uint256 _hardCap,
     uint256 _maxTransfer,
-    address _stakeToken
+    address _stakeToken,
+    
+    address _rewardsToken
 
   ) external;
 
