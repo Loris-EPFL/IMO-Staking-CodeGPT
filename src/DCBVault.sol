@@ -383,7 +383,6 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
    * @param _shares Number of shares to withdraw
    */
   function withdraw(uint256 _pid, uint256 _shares) public notContract {
-    harvest(_pid);
 
     PoolInfo storage pool = pools[_pid];
     UserInfo storage user = users[_pid][msg.sender];
@@ -391,6 +390,8 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     require(_shares > 0, "Nothing to withdraw");
     require(_shares <= user.shares, "Withdraw exceeds balance");
     require(canUnstake(msg.sender, _pid), "Stake still locked");
+
+    harvest(_pid);
 
     uint256 currentAmount = (balanceOf(_pid) * _shares) / pool.totalShares;
   

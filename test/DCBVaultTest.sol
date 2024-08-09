@@ -168,7 +168,7 @@ contract DCBVaultTest is Test {
         vault.deposit(0, 100 ether);
 
         // Try to withdraw before lock period
-        vm.expectRevert("Reward still locked");
+        vm.expectRevert("Stake still locked");
         vault.withdraw(0, 100 ether);
         vm.stopPrank();
     }
