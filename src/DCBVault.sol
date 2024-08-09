@@ -150,6 +150,9 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
           
         ) = masterchef.poolInfo(_pid);
 
+          
+        
+
         uint256 stopDepo = endDate - (lockPeriodInDays * 1 days);
         require(block.timestamp <= stopDepo, "Staking disabled for this pool");
 
@@ -182,18 +185,11 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
 
         // Stake the received BPT tokens
         stakedAmount = stakeTokenERC.balanceOf(address(this)) - bptBalanceBefore; //get new BPT balance of contract
-        if(stakedAmount == 0 || totalDeposit + stakedAmount <= hardCap) revert IncorrectAmount();
+        if(stakedAmount == 0 || totalDeposit + stakedAmount >= hardCap) revert IncorrectAmount();
 
         uint256 poolBal = balanceOf(_pid);
         poolBal += masterchef.payout(_pid, address(this));
         //stakeTokenERC.safeTransferFrom(msg.sender, address(this), _amount);
-
-        if (fee.depositFee > 0) {
-          uint256 feeAmount = (stakedAmount * fee.depositFee) / DIVISOR;
-          stakeTokenERC.safeTransfer(fee.feeReceiver, feeAmount);
-          stakedAmount -= feeAmount;
-          emit DepositFee(fee.feeReceiver, feeAmount);
-        }
 
         uint256 currentShares = 0;
 
@@ -215,15 +211,6 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
 
         _earn(_pid);
 
-        uint256 rebateAmount = (stakedAmount * rebates[_pid].rebatePercent) / DIVISOR;
-        if (rebateAmount > 0) {
-          uint256 total = balanceOf(_pid);
-          uint256 balance = stakeTokenERC.balanceOf(address(masterchef));
-          require(balance - total >= rebateAmount, "Not enough rebate balance");
-          stakeTokenERC.safeTransferFrom(address(masterchef), msg.sender, rebateAmount);
-
-          emit RebateSent(msg.sender, _pid, rebateAmount);
-        }
 
         emit Deposit(msg.sender, _pid, stakedAmount, block.timestamp);
             
