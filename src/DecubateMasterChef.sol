@@ -105,7 +105,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
-    
+    //_disableInitializers();
   }
 
   // Initializer
@@ -326,7 +326,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
 
     if (multipliedAmount > 0) {
       _checkEnoughRewards(_pid, multipliedAmount);
-      safeTOKENTransfer(poolInfo[_pid].rewardsToken, _user, multipliedAmount);
+      SafeERC20.safeTransfer(IERC20(poolInfo[_pid].rewardsToken), _user, multipliedAmount);
     }
 
     return multipliedAmount;
@@ -343,6 +343,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
 
   function claim(uint256 _pid) external override returns (bool) {
     require(canClaim(_pid, msg.sender), "Reward still locked");
+
 
     _claim(_pid, msg.sender);
 
@@ -429,7 +430,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     pool.totalDeposit = pool.totalDeposit - _amount;
     user.totalInvested = user.totalInvested - _amount;
 
-    safeTOKENTransfer(pool.stakeToken, msg.sender, _amount);
+    SafeERC20.safeTransfer(IERC20(pool.stakeToken), msg.sender, _amount);
 
     emit Unstake(msg.sender, _pid, _amount, block.timestamp);
 
@@ -578,11 +579,19 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
 
     uint256 amount = payout(_pid, _addr);
 
+    emit Claim(_addr, _pid, amount, block.timestamp);
+
+    
+
+
     if (amount > 0) {
+      
       _checkEnoughRewards(_pid, amount);
+      
 
       user.totalWithdrawn = user.totalWithdrawn + amount;
 
+    
       uint256 feeAmount = (amount * feePercent) / 1000;
 
       amount = amount - feeAmount;
@@ -591,12 +600,15 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
 
       user.totalClaimed = user.totalClaimed + amount;
 
-      safeTOKENTransfer(pool.rewardsToken, feeAddress, feeAmount);
+      SafeERC20.safeTransfer(IERC20(pool.rewardsToken), feeAddress, feeAmount);
 
-      safeTOKENTransfer(pool.rewardsToken, _addr, amount);
+      SafeERC20.safeTransfer(IERC20(pool.rewardsToken), _addr, amount);
+      
     }
 
     emit Claim(_addr, _pid, amount, block.timestamp);
+
+    
   }
 
   /**

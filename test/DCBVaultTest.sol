@@ -5,20 +5,42 @@ import "forge-std/Test.sol";
 import "../src/DCBVault.sol";
 import "../src/interfaces/IDecubateMasterChef.sol";
 import "@openzeppelin/token/ERC20/IERC20.sol";
+import "../src/DecubateMasterChef.sol";
+import {Utils} from "./utils/Utils.sol";
+
+
 
 contract DCBVaultTest is Test {
     DCBVault public vault;
-    IDecubateMasterChef public masterChef;
+    DecubateMasterChef public masterChef;
     IERC20 public stakeToken;
     IERC20 public rewardsToken;
+    
+    
 
-    address public admin = address(1);
-    address public user1 = address(2);
-    address public user2 = address(3);
+    address public admin;
+    address public masterChefAddress;
+    address public user1;
+    address public user2;
+    address payable[] testsAddresses;
+    Utils internal utils;
 
     function setUp() public {
+        utils = new Utils();
+        testsAddresses = utils.createUsers(4);
+        admin = testsAddresses[0];
+        masterChefAddress = testsAddresses[1];
+        user1 = testsAddresses[2];
+        user2 = testsAddresses[3];
+
+        vm.deal(user1, 1 ether);
+        vm.deal(user2, 1 ether);
+
         // Deploy a mock MasterChef contract
-        masterChef = IDecubateMasterChef(deployCode("MockDecubateMasterChef.sol"));
+        //masterChef = IDecubateMasterChef(deployCode("MockDecubateMasterChef.sol"));
+        vm.prank(masterChefAddress);
+        masterChef = new DecubateMasterChef();
+        masterChef.initialize(admin);
 
         // Use the actual token addresses
         stakeToken = IERC20(0x7120fD744CA7B45517243CE095C568Fd88661c66);
@@ -27,6 +49,8 @@ contract DCBVaultTest is Test {
         vault = new DCBVault(admin);
         vault.initialize(masterChef, admin);
 
+        vault.setDepositFee(admin, 0);
+
         // Add a pool to MasterChef
         vm.prank(admin);
         masterChef.add(100, 30, block.timestamp + 365 days, 1000 ether, address(stakeToken), address(rewardsToken));
@@ -34,10 +58,11 @@ contract DCBVaultTest is Test {
         // Mint or transfer tokens to users for testing
         deal(address(stakeToken), user1, 1000 ether);
         deal(address(stakeToken), user2, 1000 ether);
+        deal(address(rewardsToken), address(vault.masterchef()), 10000 ether);
     }
 
     function testDeposit() public {
-        vm.startPrank(user1);
+        vm.startPrank(user1, user1);
         stakeToken.approve(address(vault), 100 ether);
         vault.deposit(0, 100 ether);
         vm.stopPrank();
@@ -48,7 +73,7 @@ contract DCBVaultTest is Test {
     }
 
     function testWithdraw() public {
-        vm.startPrank(user1);
+        vm.startPrank(user1, user1);
         stakeToken.approve(address(vault), 100 ether);
         vault.deposit(0, 100 ether);
 
@@ -64,13 +89,19 @@ contract DCBVaultTest is Test {
     }
 
     function testHarvest() public {
-        vm.startPrank(user1);
+        vm.startPrank(user1, user1);
         stakeToken.approve(address(vault), 100 ether);
-        vault.deposit(0, 100 ether);
+        vault.deposit(0, 1 ether);
+        vm.stopPrank();
 
         // Warp time to accumulate rewards
-        vm.warp(block.timestamp + 7 days);
+        vm.warp(block.timestamp + 366 days);
+        vm.startPrank(user1, user1);
+        //masterChef.claim(0);
+        console2.log("addrss of masterchef", address(vault.masterchef()));
+        console2.log("balance of masterChef", rewardsToken.balanceOf(address(vault.masterchef())));
         uint256 initialBalance = rewardsToken.balanceOf(user1);
+        //console2.log("msg sender is", msg.sender);
         vault.harvest(0);
         vm.stopPrank();
 
@@ -79,12 +110,12 @@ contract DCBVaultTest is Test {
     }
 
     function testCannotWithdrawBeforeLockPeriod() public {
-        vm.startPrank(user1);
+        vm.startPrank(user1, user1);
         stakeToken.approve(address(vault), 100 ether);
         vault.deposit(0, 100 ether);
 
         // Try to withdraw before lock period
-        vm.expectRevert("Stake still locked");
+        vm.expectRevert("Reward still locked");
         vault.withdraw(0, 100 ether);
         vm.stopPrank();
     }
@@ -97,10 +128,11 @@ contract DCBVaultTest is Test {
 
     function testSetDepositFee() public {
         ( uint256 depositFee, address feeReceiver) = vault.fee();
+        vm.prank(feeReceiver, feeReceiver);
+        vault.setDepositFee(user2, 30);
 
-        vm.prank(feeReceiver);
-        vault.setDepositFee(address(4), 30);
-        assertEq(feeReceiver, address(4));
+        (depositFee, feeReceiver) = vault.fee();
+        assertEq(feeReceiver, user2);
         assertEq(depositFee, 30);
     }
 
@@ -114,7 +146,7 @@ contract DCBVaultTest is Test {
     }
 
     function testGetPricePerFullShare() public {
-        vm.startPrank(user1);
+        vm.startPrank(user1, user1);
         stakeToken.approve(address(vault), 100 ether);
         vault.deposit(0, 100 ether);
         vm.stopPrank();

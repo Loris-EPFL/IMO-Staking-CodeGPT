@@ -45,8 +45,8 @@ contract DecubateMasterChefTest is Test {
         nftToken = IERC721Enumerable(address(new MockERC721("NFT Token", "NFT")));
 
         // Assume we have a way to mint or transfer tokens to users for testing
-        deal(address(stakeToken), users[0], 10 ether);
-        deal(address(stakeToken), users[1], 10 ether);
+        deal(address(stakeToken), users[0], 100 ether);
+        deal(address(stakeToken), users[1], 100 ether);
         deal(address(rewardsToken), address(masterChef), 10000 ether);
 
         vm.stopPrank();
@@ -83,12 +83,14 @@ contract DecubateMasterChefTest is Test {
         masterChef.add(120, 30, block.timestamp + 365 days, 1000 ether, address(stakeToken), address(rewardsToken));
         vm.stopPrank();
 
+        deal(address(stakeToken), users[0], 10 ether);
+
         vm.startPrank(users[0]);
         stakeToken.approve(address(masterChef), 100 ether);
-        masterChef.stake(0, 100 ether);
+        masterChef.stake(0, 10 ether);
 
         (uint256 totalInvested, , , ,  ) = masterChef.users(0, users[0]);
-        assertEq(totalInvested, 100 ether);
+        assertEq(totalInvested, 10 ether);
 
         vm.stopPrank();
     }
@@ -97,6 +99,9 @@ contract DecubateMasterChefTest is Test {
         vm.startPrank(admin);
         masterChef.add(120, 30, block.timestamp + 365 days, 100 ether, address(stakeToken), address(rewardsToken));
         vm.stopPrank();
+
+        deal(address(stakeToken), users[0], 101 ether);
+
 
         vm.startPrank(users[0]);
         stakeToken.approve(address(masterChef), 101 ether);
@@ -110,6 +115,9 @@ contract DecubateMasterChefTest is Test {
         masterChef.add(120, 30, block.timestamp + 365 days, 1000 ether, address(stakeToken), address(rewardsToken));
         vm.stopPrank();
 
+        deal(address(stakeToken), users[0], 100 ether);
+
+
         vm.warp(block.timestamp + 366 days);
 
         vm.startPrank(users[0]);
@@ -121,8 +129,11 @@ contract DecubateMasterChefTest is Test {
 
     function testClaim() public {
         vm.startPrank(admin);
-        masterChef.add(120, 30, block.timestamp + 100000,   1000 ether, address(stakeToken), address(rewardsToken));
+        masterChef.add(120, 30, block.timestamp + 365 days,   1000 ether, address(stakeToken), address(rewardsToken));
         vm.stopPrank();
+
+        deal(address(stakeToken), users[0], 100 ether);
+
 
         vm.startPrank(users[0]);
         stakeToken.approve(address(masterChef), 100 ether);
@@ -144,6 +155,9 @@ contract DecubateMasterChefTest is Test {
         masterChef.add(120, 30, block.timestamp + 365 days, 1000 ether, address(stakeToken), address(rewardsToken));
         vm.stopPrank();
 
+        deal(address(stakeToken), users[0], 100 ether);
+
+
         vm.startPrank(users[0]);
         stakeToken.approve(address(masterChef), 100 ether);
         masterChef.stake(0, 100 ether);
@@ -160,6 +174,9 @@ contract DecubateMasterChefTest is Test {
         vm.startPrank(admin);
         masterChef.add(120, 30, block.timestamp + 365 days, 1000 ether, address(stakeToken), address(rewardsToken));
         vm.stopPrank();
+
+        deal(address(stakeToken), users[0], 100 ether);
+
 
         vm.startPrank(users[0]);
         stakeToken.approve(address(masterChef), 100 ether);
@@ -181,6 +198,9 @@ contract DecubateMasterChefTest is Test {
         masterChef.add(120, 30, block.timestamp + 365 days, 1000 ether, address(stakeToken), address(rewardsToken));
         masterChef.setNFT(0, "Test NFT", address(nftToken), true, 20, 1, 100);
         vm.stopPrank();
+
+        deal(address(stakeToken), users[0], 100 ether);
+
 
         MockERC721(address(nftToken)).mint(users[0], 1);
 

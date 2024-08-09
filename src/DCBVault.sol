@@ -97,7 +97,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(address initialOwner) Ownable(initialOwner) {
-    _disableInitializers();
+    //_disableInitializers();
   }
 
   /**
@@ -106,14 +106,14 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
    */
   function initialize(IDecubateMasterChef _masterchef, address _admin) external initializer {
     require(address(_masterchef) != address(0), "Zero address");
-    grantRole(DEFAULT_ADMIN_ROLE, _admin);
-    grantRole(MANAGER_ROLE, _admin);
+    _grantRole(DEFAULT_ADMIN_ROLE, _admin);
+    _grantRole(MANAGER_ROLE, _admin);
 
     masterchef = IDecubateMasterChef(_masterchef);
-    callFee = 25;
+    callFee = 0;
 
     // Set default deposit fee
-    fee.depositFee = 25;
+    fee.depositFee = 0;
     fee.feeReceiver = msg.sender;
   }
 
@@ -259,7 +259,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     }
 
     uint256 poolBal = balanceOf(_pid);
-    poolBal += masterchef.payout(_pid, address(this));
+    //poolBal += masterchef.payout(_pid, address(this));
     token.safeTransferFrom(msg.sender, address(this), _amount);
 
     if (fee.depositFee > 0) {
@@ -288,7 +288,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     pool.pendingClaim += _amount;
 
     _earn(_pid);
-
+    /*
     uint256 rebateAmount = (_amount * rebates[_pid].rebatePercent) / DIVISOR;
     if (rebateAmount > 0) {
       uint256 total = balanceOf(_pid);
@@ -298,6 +298,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
 
       emit RebateSent(msg.sender, _pid, rebateAmount);
     }
+    */
 
     emit Deposit(msg.sender, _pid, _amount, block.timestamp);
   }
@@ -433,14 +434,20 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     require(canUnstake(msg.sender, _pid), "Stake still locked");
 
     uint256 currentAmount = (balanceOf(_pid) * _shares) / pool.totalShares;
+    emit Withdraw(msg.sender, _pid, balanceOf(_pid), block.timestamp);
+    emit Withdraw(msg.sender, _pid, _shares, block.timestamp);
+    emit Withdraw(msg.sender, _pid, pool.totalShares, block.timestamp);
+
+
+
     uint256 totalReward = currentAmount - (user.totalInvested * _shares) / user.shares;
-    uint256 multipliedAmount = masterchef.handleNFTMultiplier(_pid, msg.sender, totalReward);
+    //uint256 multipliedAmount = masterchef.handleNFTMultiplier(_pid, msg.sender, totalReward);
 
     user.totalInvested -= (user.totalInvested * _shares) / user.shares;
     user.shares -= _shares;
     pool.totalShares -= _shares;
-    user.totalClaimed += totalReward + multipliedAmount; //With NFT Boost
-
+    //user.totalClaimed += totalReward + multipliedAmount; //With NFT Boost
+   
     IERC20 token = getTokenOfPool(_pid);
     masterchef.unStake(_pid, currentAmount);
 
@@ -463,12 +470,23 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
    */
   function harvest(uint256 _pid) public notContract whenNotPaused {
     PoolInfo storage pool = pools[_pid];
-    IERC20 token = getTokenOfPool(_pid);
+    IERC20 token = getRewardTokenOfPool(_pid);
+
+    
 
     uint256 prevBal = token.balanceOf(address(this));
-    masterchef.claim(_pid);
-    uint256 claimed = token.balanceOf(address(this)) - prevBal;
+    uint256 prevBalMasterChef = token.balanceOf(msg.sender);
 
+    bool canClaim = masterchef.canClaim(_pid, msg.sender);
+    bool isClaimSuccess = masterchef.claim(_pid);
+    require(canClaim, "Claim failed");
+
+    
+    
+    uint256 claimed = token.balanceOf(address(this)) - prevBal;
+    if (claimed == 0) revert NoBalance();
+    
+    
     uint256 currentCallFee = (claimed * callFee) / DIVISOR;
     claimed -= currentCallFee;
     pool.lastHarvestedTime = block.timestamp;
@@ -477,9 +495,17 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
       token.safeTransfer(msg.sender, currentCallFee);
     }
 
-    _earn(_pid);
+    SafeERC20.safeTransfer(token, msg.sender, claimed);
+
+    //do not autocompound (since stake token and reward token are different)
+    //_earn(_pid);
+    
 
     emit Harvest(msg.sender, _pid, block.timestamp);
+
+    
+
+  
   }
 
   /**
@@ -515,7 +541,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
   function balanceOf(uint256 _pid) public view returns (uint256) {
     (uint256 amount, , , , ) = masterchef.users(_pid, address(this));
 
-    return pools[_pid].pendingClaim + amount;
+    return amount;
   }
 
   /**
@@ -531,12 +557,17 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
   }
 
   /**
-   * @notice Returns the token of the pool
+   * @notice Returns the stake token of the pool
    * @param _pid Pool id
    * @return Token of the pool
    */
   function getTokenOfPool(uint256 _pid) internal view returns (IERC20) {
     (, , , , , , address token,) = masterchef.poolInfo(_pid);
     return IERC20(token);
+  }
+
+  function getRewardTokenOfPool(uint256 _pid) internal view returns (IERC20) {
+    (, , , , , , , address rewardToken) = masterchef.poolInfo(_pid);
+    return IERC20(rewardToken);
   }
 }
