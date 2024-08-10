@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.17;
+
+import "forge-std/Script.sol";
+import "../src/DCBVault.sol";
+import "../src/DecubateMasterChef.sol";
+import "@openzeppelin/token/ERC20/IERC20.sol";
+
+contract DeployScript is Script {
+    function run() external {
+        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        vm.startBroadcast(deployerPrivateKey);
+
+        // Deploy DecubateMasterChef
+        DecubateMasterChef masterChef = new DecubateMasterChef();
+        masterChef.initialize(msg.sender);
+
+        // Deploy DCBVault
+        DCBVault vault = new DCBVault(msg.sender);
+        vault.initialize(masterChef, msg.sender);
+
+        // Set deposit fee to 0
+        vault.setDepositFee(msg.sender, 0);
+
+        // Use the actual token addresses for Base Network
+        address stakeTokenAddress = 0x7120fD744CA7B45517243CE095C568Fd88661c66;
+        address rewardsTokenAddress = 0x0f1D1b7abAeC1Df252C4Db751686FC5233f6D3f;
+
+        // Add a pool to MasterChef
+        masterChef.add(
+            100,
+            30,
+            block.timestamp + 365 days,
+            1000 ether,
+            stakeTokenAddress,
+            rewardsTokenAddress
+        );
+
+         // Set up NFT functionality (if needed)
+        // Replace with actual NFT contract address on Base Network
+        //address = address(0); // Replace with actual address
+        //masterChef.setNFT(0, "Base NFT", nftTokenAddress, true, 20, 1, 100);
+
+        // Transfer initial rewards to MasterChef (if needed)
+        // This assumes you have control over the rewards token
+        // IERC20(rewardsTokenAddress).transfer(address(masterChef), 10000 ether);
+
+        // Optional: Transfer ownership of contracts if needed
+        // masterChef.transferOwnership(newOwnerAddress);
+        // vault.transferOwnership(newOwnerAddress);
+
+        vm.stopBroadcast();
+
+        // Log deployed contract addresses
+        console.log("DecubateMasterChef deployed at:", address(masterChef));
+        console.log("DCBVault deployed at:", address(vault));
+    }
+}
