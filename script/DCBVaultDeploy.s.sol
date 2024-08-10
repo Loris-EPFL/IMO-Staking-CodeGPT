@@ -7,7 +7,29 @@ import "../src/DecubateMasterChef.sol";
 import "@openzeppelin/token/ERC20/IERC20.sol";
 
 contract DeployScript is Script {
-    function run() external {
+
+    function setUp() public {
+        //setup before deploy if needed
+            /*
+        owner = vm.envAddress("OWNER_ADDRESS");
+        initialValue = vm.envUint("INITIAL_VALUE");
+
+        // You can also set default values if env vars are not set
+        if (owner == address(0)) {
+            owner = address(this);
+        }
+        if (initialValue == 0) {
+            initialValue = 100;
+        }
+
+        // Log some information
+        console.log("Owner address:", owner);
+        console.log("Initial value:", initialValue);
+
+        */
+    }
+
+    function run() public {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         vm.startBroadcast(deployerPrivateKey);
 
