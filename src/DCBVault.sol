@@ -7,12 +7,15 @@ import { SafeERC20 } from "@openzeppelin/token/ERC20/utils/SafeERC20.sol";
 import { Pausable } from "@openzeppelin/utils/Pausable.sol";
 import {Initializable} from "@openzeppelin/proxy/utils/Initializable.sol";
 import { IDecubateMasterChef } from "./interfaces/IDecubateMasterChef.sol";
+import {ABalancer} from "./balancer/zapper/ABalancer.sol";
+import {Ownable} from "@openzeppelin/access/Ownable.sol";
+import {IWETH} from "./balancer/interfaces/IWETH.sol";
 
 /**
  * @title DCBVault
  * @dev Vault contract for managing user deposits, staking, and rewards distribution
  */
-contract DCBVault is AccessControl, Pausable, Initializable {
+contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
   using SafeERC20 for IERC20;
 
   struct UserInfo {
@@ -73,6 +76,12 @@ contract DCBVault is AccessControl, Pausable, Initializable {
   event DepositFee(address feeReceiver, uint256 depositFee);
   event ManagerRoleSet(address _user, bool _status);
 
+  error NoBalance();
+  error NullAmount();
+  error IncorrectAmount();
+  error AddressZero();
+  error NotApproved();
+
   modifier onlyManager() {
     require(hasRole(MANAGER_ROLE, msg.sender), "Only manager");
     _;
@@ -87,8 +96,7 @@ contract DCBVault is AccessControl, Pausable, Initializable {
   }
 
   /// @custom:oz-upgrades-unsafe-allow constructor
-  constructor() {
-    _disableInitializers();
+  constructor(address initialOwner) Ownable(initialOwner) {
   }
 
   /**
@@ -97,14 +105,14 @@ contract DCBVault is AccessControl, Pausable, Initializable {
    */
   function initialize(IDecubateMasterChef _masterchef, address _admin) external initializer {
     require(address(_masterchef) != address(0), "Zero address");
-    grantRole(DEFAULT_ADMIN_ROLE, _admin);
-    grantRole(MANAGER_ROLE, _admin);
+    _grantRole(DEFAULT_ADMIN_ROLE, _admin);
+    _grantRole(MANAGER_ROLE, _admin);
 
     masterchef = IDecubateMasterChef(_masterchef);
-    callFee = 25;
+    callFee = 0;
 
     // Set default deposit fee
-    fee.depositFee = 25;
+    fee.depositFee = 0;
     fee.feeReceiver = msg.sender;
   }
 
@@ -117,6 +125,88 @@ contract DCBVault is AccessControl, Pausable, Initializable {
 
     emit ManagerRoleSet(_user, _status);
   }
+
+  function zapEtherAndStakeIMO(uint256 _pid)
+        external
+        payable
+        nonReentrant()
+        returns (uint256 stakedAmount)
+    {
+      if (msg.sender == address(0)) revert AddressZero();
+      if (msg.value == 0) revert NullAmount();
+      if(paused()) revert EnforcedPause();
+      
+        PoolInfo storage pool = pools[_pid];
+
+        (
+          ,
+          uint256 lockPeriodInDays,
+          uint256 totalDeposit,
+          ,
+          uint256 endDate,
+          uint256 hardCap,
+          address stakeToken,
+          
+        ) = masterchef.poolInfo(_pid);
+
+          
+        
+
+        uint256 stopDepo = endDate - (lockPeriodInDays * 1 days);
+        require(block.timestamp <= stopDepo, "Staking disabled for this pool");
+
+        IERC20 stakeTokenERC = IERC20(stakeToken);
+
+        uint256 bptBalanceBefore = stakeTokenERC.balanceOf(address(this));
+
+        uint256 EthToZap = (msg.value * 80) /100;
+
+        IWETH(0x4200000000000000000000000000000000000006).deposit{value: msg.value}();
+        bool isVaultApproved = IWETH(0x4200000000000000000000000000000000000006).approve(vault, msg.value);
+        if(!isVaultApproved) revert NotApproved();
+        uint256 EthAmount = msg.value - EthToZap;
+
+        if(EthToZap == 0 || EthAmount == 0) revert IncorrectAmount();
+
+        //Zap eth to IMO
+        uint256 ImoAmount = ethToImo(EthToZap, 0, address(this), address(this)); 
+        if(ImoAmount == 0) revert IncorrectAmount();
+
+        //Join imo pool (IMO is given from Vault internal Balance, WETH is given from here)
+        joinImoPool(EthAmount, ImoAmount, address(this), address(this));
+
+        // Stake the received BPT tokens
+        stakedAmount = stakeTokenERC.balanceOf(address(this)) - bptBalanceBefore; //get new BPT balance of contract
+        if(stakedAmount == 0 || totalDeposit + stakedAmount >= hardCap) revert IncorrectAmount();
+
+        uint256 poolBal = balanceOf(_pid);
+        poolBal += masterchef.payout(_pid, address(this));
+
+        uint256 currentShares = 0;
+
+        if (pool.totalShares != 0) {
+          currentShares = (stakedAmount * pool.totalShares) / poolBal;
+        } else {
+          stakeTokenERC.approve(address(masterchef), type(uint256).max);
+          currentShares = stakedAmount;
+        }
+
+        UserInfo storage user = users[_pid][msg.sender];
+
+        user.shares += currentShares;
+        user.lastDepositedTime = block.timestamp;
+        user.totalInvested += stakedAmount;
+
+        pool.totalShares += currentShares;
+        pool.pendingClaim += stakedAmount;
+
+        _earn(_pid);
+
+        emit Deposit(msg.sender, _pid, stakedAmount, block.timestamp);
+        return(stakedAmount);
+            
+    }
+
 
   /**
    * @notice Deposits tokens into the DCB Vault
@@ -136,26 +226,18 @@ contract DCBVault is AccessControl, Pausable, Initializable {
         ,
         uint256 endDate,
         uint256 hardCap,
-        address tokenOfPool
+        address stakeToken,
       ) = masterchef.poolInfo(_pid);
 
       require(totalDeposit + _amount <= hardCap, "Pool full");
       uint256 stopDepo = endDate - (lockPeriodInDays * 1 days);
       require(block.timestamp <= stopDepo, "Staking disabled for this pool");
 
-      token = IERC20(tokenOfPool);
+      token = IERC20(stakeToken);
     }
 
     uint256 poolBal = balanceOf(_pid);
-    poolBal += masterchef.payout(_pid, address(this));
     token.safeTransferFrom(msg.sender, address(this), _amount);
-
-    if (fee.depositFee > 0) {
-      uint256 feeAmount = (_amount * fee.depositFee) / DIVISOR;
-      token.safeTransfer(fee.feeReceiver, feeAmount);
-      _amount -= feeAmount;
-      emit DepositFee(fee.feeReceiver, feeAmount);
-    }
 
     uint256 currentShares = 0;
 
@@ -176,16 +258,6 @@ contract DCBVault is AccessControl, Pausable, Initializable {
     pool.pendingClaim += _amount;
 
     _earn(_pid);
-
-    uint256 rebateAmount = (_amount * rebates[_pid].rebatePercent) / DIVISOR;
-    if (rebateAmount > 0) {
-      uint256 total = balanceOf(_pid);
-      uint256 balance = token.balanceOf(address(masterchef));
-      require(balance - total >= rebateAmount, "Not enough rebate balance");
-      token.safeTransferFrom(address(masterchef), msg.sender, rebateAmount);
-
-      emit RebateSent(msg.sender, _pid, rebateAmount);
-    }
 
     emit Deposit(msg.sender, _pid, _amount, block.timestamp);
   }
@@ -311,7 +383,6 @@ contract DCBVault is AccessControl, Pausable, Initializable {
    * @param _shares Number of shares to withdraw
    */
   function withdraw(uint256 _pid, uint256 _shares) public notContract {
-    harvest(_pid);
 
     PoolInfo storage pool = pools[_pid];
     UserInfo storage user = users[_pid][msg.sender];
@@ -320,19 +391,20 @@ contract DCBVault is AccessControl, Pausable, Initializable {
     require(_shares <= user.shares, "Withdraw exceeds balance");
     require(canUnstake(msg.sender, _pid), "Stake still locked");
 
+    harvest(_pid);
+
     uint256 currentAmount = (balanceOf(_pid) * _shares) / pool.totalShares;
+  
     uint256 totalReward = currentAmount - (user.totalInvested * _shares) / user.shares;
-    uint256 multipliedAmount = masterchef.handleNFTMultiplier(_pid, msg.sender, totalReward);
 
     user.totalInvested -= (user.totalInvested * _shares) / user.shares;
     user.shares -= _shares;
     pool.totalShares -= _shares;
-    user.totalClaimed += totalReward + multipliedAmount; //With NFT Boost
-
+   
     IERC20 token = getTokenOfPool(_pid);
     masterchef.unStake(_pid, currentAmount);
 
-    (, uint256 lockPeriod, , , , , ) = masterchef.poolInfo(_pid);
+    (, uint256 lockPeriod, , , , , ,) = masterchef.poolInfo(_pid);
     if (block.timestamp < user.lastDepositedTime + (lockPeriod * 1 days)) {
       uint256 penalty = (currentAmount * rebates[_pid].earlyWithdrawPenalty) / DIVISOR;
       token.safeTransfer(address(masterchef), penalty);
@@ -351,23 +423,27 @@ contract DCBVault is AccessControl, Pausable, Initializable {
    */
   function harvest(uint256 _pid) public notContract whenNotPaused {
     PoolInfo storage pool = pools[_pid];
-    IERC20 token = getTokenOfPool(_pid);
+    IERC20 token = getRewardTokenOfPool(_pid);
 
     uint256 prevBal = token.balanceOf(address(this));
-    masterchef.claim(_pid);
-    uint256 claimed = token.balanceOf(address(this)) - prevBal;
+    uint256 prevBalMasterChef = token.balanceOf(msg.sender);
 
+    masterchef.canClaim(_pid, msg.sender);
+    bool isClaimSuccess = masterchef.claim(_pid);
+    require(isClaimSuccess, "Claim failed");
+    
+    uint256 claimed = token.balanceOf(address(this)) - prevBal;
+    if (claimed == 0) revert NoBalance();
+    
     uint256 currentCallFee = (claimed * callFee) / DIVISOR;
     claimed -= currentCallFee;
     pool.lastHarvestedTime = block.timestamp;
     pool.pendingClaim += claimed;
-    if (currentCallFee > 0) {
-      token.safeTransfer(msg.sender, currentCallFee);
-    }
 
-    _earn(_pid);
+    SafeERC20.safeTransfer(token, msg.sender, claimed);
 
     emit Harvest(msg.sender, _pid, block.timestamp);
+
   }
 
   /**
@@ -389,7 +465,7 @@ contract DCBVault is AccessControl, Pausable, Initializable {
    */
   function canUnstake(address _user, uint256 _pid) public view returns (bool) {
     UserInfo storage user = users[_pid][_user];
-    (, uint256 lockPeriod, , , , , ) = masterchef.poolInfo(_pid);
+    (, uint256 lockPeriod, , , , , ,) = masterchef.poolInfo(_pid);
 
     return (block.timestamp >= user.lastDepositedTime + (lockPeriod * 1 days) ||
       rebates[_pid].isEarlyWithdrawActive);
@@ -403,7 +479,7 @@ contract DCBVault is AccessControl, Pausable, Initializable {
   function balanceOf(uint256 _pid) public view returns (uint256) {
     (uint256 amount, , , , ) = masterchef.users(_pid, address(this));
 
-    return pools[_pid].pendingClaim + amount;
+    return amount;
   }
 
   /**
@@ -419,12 +495,17 @@ contract DCBVault is AccessControl, Pausable, Initializable {
   }
 
   /**
-   * @notice Returns the token of the pool
+   * @notice Returns the stake token of the pool
    * @param _pid Pool id
    * @return Token of the pool
    */
   function getTokenOfPool(uint256 _pid) internal view returns (IERC20) {
-    (, , , , , , address token) = masterchef.poolInfo(_pid);
+    (, , , , , , address token,) = masterchef.poolInfo(_pid);
     return IERC20(token);
+  }
+
+  function getRewardTokenOfPool(uint256 _pid) internal view returns (IERC20) {
+    (, , , , , , , address rewardToken) = masterchef.poolInfo(_pid);
+    return IERC20(rewardToken);
   }
 }

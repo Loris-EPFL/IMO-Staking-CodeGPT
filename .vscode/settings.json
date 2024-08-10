@@ -3,5 +3,6 @@
         "ds-test/=lib/ds-test/src/",
         "forge-std/=lib/forge-std/src/",
         "@openzeppelin/=lib/openzeppelin-contracts/contracts/"
-    ]
+    ],
+    "CodeGPT.apiKey": "CodeGPT Plus Beta"
 }

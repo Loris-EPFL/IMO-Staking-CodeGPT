@@ -12,6 +12,7 @@ import { SafeERC20 } from "@openzeppelin/token/ERC20/utils/SafeERC20.sol";
 import { InterestHelper } from "./libraries/InterestHelper.sol";
 import { IDecubateMasterChef } from "./interfaces/IDecubateMasterChef.sol";
 import {Initializable} from "@openzeppelin/proxy/utils/Initializable.sol";
+import {ABalancer} from "./balancer/zapper/ABalancer.sol";
 
 
 contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChef, Initializable {
@@ -34,6 +35,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
    *
    */
 
+
   struct Pool {
     uint256 apy;
     uint256 lockPeriodInDays;
@@ -41,7 +43,9 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     uint256 startDate;
     uint256 endDate;
     uint256 hardCap;
-    address token;
+    address stakeToken;
+    address rewardsToken;
+
   }
 
   address public compounderContract; //Auto compounder
@@ -71,7 +75,8 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     uint256 lockPeriodInDays,
     uint256 endDate,
     uint256 hardCap,
-    address token
+    address stakeToken,
+    address rewardsToken  
   );
   event PoolChanged(
     uint256 pid,
@@ -100,14 +105,13 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
-    _disableInitializers();
   }
 
   // Initializer
   function initialize(address _admin) external initializer {
-    grantRole(DEFAULT_ADMIN_ROLE, _admin);
-    grantRole(MANAGER_ROLE, _admin);
-    grantRole(MANAGER_ROLE, msg.sender);
+    _grantRole(DEFAULT_ADMIN_ROLE, _admin);
+    _grantRole(MANAGER_ROLE, _admin);
+    _grantRole(MANAGER_ROLE, msg.sender);
 
     feeAddress = msg.sender;
     feePercent = 5;
@@ -147,7 +151,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     require(_compounder != address(0), "Zero address");
     if (compounderContract == address(0)) compounderContract = _compounder;
     for (uint256 i = 0; i < poolInfo.length; i++) {
-      IERC20(poolInfo[i].token).approve(compounderContract, type(uint256).max);
+      IERC20(poolInfo[i].stakeToken).approve(compounderContract, type(uint256).max);
     }
 
     emit CompounderUpdated(_compounder);
@@ -161,17 +165,19 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
    * @param _lockPeriodInDays lock period in days
    * @param _endDate  end date of the pool
    * @param _hardCap  hard cap of the pool
-   * @param _token  token address
+   * @param _rewardsToken  token address
    */
   function add(
     uint256 _apy,
     uint256 _lockPeriodInDays,
     uint256 _endDate,
     uint256 _hardCap,
-    address _token
+    address _stakeToken,
+    address _rewardsToken
   ) external override onlyManager {
     require(_endDate > block.timestamp, "Invalid end date");
-    require(_token != address(0), "Invalid token");
+    require(_stakeToken != address(0), "Invalid token");
+    require(_rewardsToken != address(0), "Invalid token");
     poolInfo.push(
       Pool({
         apy: _apy,
@@ -180,7 +186,8 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
         startDate: block.timestamp,
         endDate: _endDate,
         hardCap: _hardCap,
-        token: _token
+        stakeToken: _stakeToken,
+        rewardsToken: _rewardsToken
       })
     );
 
@@ -196,11 +203,11 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
       })
     );
 
-    maxTransferAmount[_token] = ~uint256(0);
+    maxTransferAmount[_stakeToken] = ~uint256(0);
     _stake(poolLength() - 1, compounderContract, 0, false); //Mock deposit for compounder
-    IERC20(_token).approve(compounderContract, type(uint256).max);
+    IERC20(_stakeToken).approve(compounderContract, type(uint256).max);
 
-    emit PoolAdded(_apy, _lockPeriodInDays, _endDate, _hardCap, _token);
+    emit PoolAdded(_apy, _lockPeriodInDays, _endDate, _hardCap, _stakeToken, _rewardsToken);
   }
 
   /**
@@ -221,7 +228,8 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     uint256 _endDate,
     uint256 _hardCap,
     uint256 _maxTransfer,
-    address
+    address _stakeToken,
+    address _rewardsToken
   ) external override onlyManager {
     require(_pid < poolLength(), "Invalid Id");
 
@@ -229,8 +237,10 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     poolInfo[_pid].lockPeriodInDays = _lockPeriodInDays;
     poolInfo[_pid].endDate = _endDate;
     poolInfo[_pid].hardCap = _hardCap;
+    poolInfo[_pid].stakeToken = _stakeToken;
+    poolInfo[_pid].rewardsToken = _rewardsToken;
 
-    maxTransferAmount[poolInfo[_pid].token] = _maxTransfer;
+    maxTransferAmount[poolInfo[_pid].stakeToken] = _maxTransfer;
 
     emit PoolChanged(_pid, _apy, _lockPeriodInDays, _endDate, _hardCap, _maxTransfer);
   }
@@ -284,11 +294,9 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
    */
   function stake(uint256 _pid, uint256 _amount) external override returns (bool) {
     Pool memory pool = poolInfo[_pid];
-    IERC20 token = IERC20(pool.token);
+    IERC20 token = IERC20(pool.stakeToken);
 
     token.safeTransferFrom(msg.sender, address(this), _amount);
-
-    reinvest(_pid);
 
     _stake(_pid, msg.sender, _amount, false);
 
@@ -318,7 +326,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
 
     if (multipliedAmount > 0) {
       _checkEnoughRewards(_pid, multipliedAmount);
-      safeTOKENTransfer(poolInfo[_pid].token, _user, multipliedAmount);
+      SafeERC20.safeTransfer(IERC20(poolInfo[_pid].rewardsToken), _user, multipliedAmount);
     }
 
     return multipliedAmount;
@@ -421,7 +429,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     pool.totalDeposit = pool.totalDeposit - _amount;
     user.totalInvested = user.totalInvested - _amount;
 
-    safeTOKENTransfer(pool.token, msg.sender, _amount);
+    SafeERC20.safeTransfer(IERC20(pool.stakeToken), msg.sender, _amount);
 
     emit Unstake(msg.sender, _pid, _amount, block.timestamp);
 
@@ -569,12 +577,13 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     Pool memory pool = poolInfo[_pid];
 
     uint256 amount = payout(_pid, _addr);
-
+    
     if (amount > 0) {
+      
       _checkEnoughRewards(_pid, amount);
-
+      
       user.totalWithdrawn = user.totalWithdrawn + amount;
-
+    
       uint256 feeAmount = (amount * feePercent) / 1000;
 
       amount = amount - feeAmount;
@@ -583,12 +592,15 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
 
       user.totalClaimed = user.totalClaimed + amount;
 
-      safeTOKENTransfer(pool.token, feeAddress, feeAmount);
+      SafeERC20.safeTransfer(IERC20(pool.rewardsToken), feeAddress, feeAmount);
 
-      safeTOKENTransfer(pool.token, _addr, amount);
+      SafeERC20.safeTransfer(IERC20(pool.rewardsToken), _addr, amount);
+      
     }
 
     emit Claim(_addr, _pid, amount, block.timestamp);
+
+    
   }
 
   /**
@@ -640,13 +652,13 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
   }
 
   function _checkEnoughRewards(uint256 _pid, uint256 _amount) internal view {
-    address token = poolInfo[_pid].token;
+    address token = poolInfo[_pid].rewardsToken;
     uint256 contractBalance = IERC20(token).balanceOf(address(this));
     uint256 depositedBalance;
     uint256 len = poolLength();
 
     for (uint256 i = 0; i < len; i++) {
-      if (poolInfo[i].token == token) {
+      if (poolInfo[i].rewardsToken == token) {
         depositedBalance += poolInfo[i].totalDeposit;
       }
     }

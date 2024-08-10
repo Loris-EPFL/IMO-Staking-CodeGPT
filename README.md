@@ -45,10 +45,15 @@ $ forge snapshot
 $ anvil
 ```
 
+### Tests
+```shell
+$ forge test -vvvv --rpc-url https://base-rpc.publicnode.com 
+```
+
 ### Deploy
 
 ```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
+$ forge script script/DCBVaultDeploy.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
 ```
 
 ### Cast
