@@ -46,7 +46,7 @@ contract DeployScript is Script {
 
         // Use the actual token addresses for Base Network
         address stakeTokenAddress = 0x7120fD744CA7B45517243CE095C568Fd88661c66;
-        address rewardsTokenAddress = 0x0f1D1b7abAeC1Df252C4Db751686FC5233f6D3f;
+        address rewardsTokenAddress = 0x0f1D1b7abAeC1Df25f2C4Db751686FC5233f6D3f;
 
         // Add a pool to MasterChef
         masterChef.add(
