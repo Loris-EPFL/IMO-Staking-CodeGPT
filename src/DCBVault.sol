@@ -46,6 +46,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
 
   uint256 public callFee; // Fee to call harvestAll function
   uint256 internal constant DIVISOR = 10000;
+  uint8 balancerPoolWeight = 75;
 
   // User staking info
   mapping(uint256 => mapping(address => UserInfo)) public users;
@@ -97,6 +98,11 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(address initialOwner) Ownable(initialOwner) {
+  }
+
+  function updateBalancerPoolWeight(uint8 _balancerPoolWeight) external onlyManager {
+    require(_balancerPoolWeight > 0 && _balancerPoolWeight <= 100, "Invalid weight");
+    balancerPoolWeight = _balancerPoolWeight;
   }
 
   /**
@@ -159,7 +165,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
 
         uint256 bptBalanceBefore = stakeTokenERC.balanceOf(address(this));
 
-        uint256 EthToZap = (msg.value * 80) /100;
+        uint256 EthToZap = (msg.value * balancerPoolWeight) /100;
 
         IWETH(0x4200000000000000000000000000000000000006).deposit{value: msg.value}();
         bool isVaultApproved = IWETH(0x4200000000000000000000000000000000000006).approve(vault, msg.value);
