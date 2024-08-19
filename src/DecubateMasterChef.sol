@@ -51,6 +51,8 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
   address public compounderContract; //Auto compounder
   address private feeAddress; //Address which receives fee
   uint8 private feePercent; //Percentage of fee deducted (/1000)
+  uint256 BPTscaling = 100; //Scaling factor for BPT tokens
+
 
   // User data
   mapping(uint256 => mapping(address => User)) public users;
@@ -138,6 +140,10 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     feeAddress = _feeWallet;
 
     emit FeeValueUpdated(_feePercent, _feeWallet);
+  }
+
+  function updateBPTScaling(uint256 _scaling) external onlyManager {
+    BPTscaling = _scaling;
   }
 
   /**
@@ -504,6 +510,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
    * @param _addr  address of the user
    */
   function payout(uint256 _pid, address _addr) public view override returns (uint256 value) {
+    //TODO adjust for BPT tokens
     User storage user = users[_pid][_addr];
     Pool storage pool = poolInfo[_pid];
 
@@ -516,7 +523,8 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
       uint256 rayValue = yearlyRateToRay((pool.apy * 10 ** 18) / 1000);
       value = accrueInterest(user.totalInvested, rayValue, to - from) - user.totalInvested;
     }
-
+    //Adjust for BPT tokens
+    value = (value * BPTscaling); 
     value = (value * multiplier) / 10;
 
     return value;

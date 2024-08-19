@@ -80,11 +80,12 @@ abstract contract ABalancer is EtherUtils, ReentrancyGuard {
     /// @dev Converts a given amount of WETH into IMO using the specified Balancer pool.
     /// @param amount The amount of WETH to be exchanged.
     /// @param imoOutMin The minimum amount of AURA expected in return.
-    function ethToImo(uint256 amount, uint256 imoOutMin, address sender, address receiver) public payable returns (uint256 amountOutCalculated) {
+    function ethToImo(uint256 amount, uint256 imoOutMin, address sender, address receiver) internal returns (uint256 amountOutCalculated) {
+
         IVault.SingleSwap memory params = IVault.SingleSwap({
             poolId: poolId,
             kind: 0, // exact input, output given
-            assetIn: WETH, //eth native adress
+            assetIn: WETH, //Weth adress
             assetOut: IMO,
             amount: amount, // Amount to swap
             userData: ""
@@ -100,8 +101,9 @@ abstract contract ABalancer is EtherUtils, ReentrancyGuard {
         amountOutCalculated = IVault(vault).swap(params, funds, imoOutMin, block.timestamp);
     }
 
-    function queryJoinImoPool(uint256 EthAmount, uint256 ImoAmount, address sender, address receiver) public nonReentrant returns (uint256 amountOutCalculated) {
+    function queryJoinImoPool(uint256 EthAmount, uint256 ImoAmount, address sender, address receiver) internal returns (uint256 amountOutCalculated) {
         //ETH address for the pool is 0 (given pool is denomiated in ETH)
+
         IbalancerQueries.JoinPoolRequest memory request = IbalancerQueries.JoinPoolRequest({
             assets: [IMO, WETH],
             maxAmountsIn: [ImoAmount, EthAmount],
@@ -119,7 +121,7 @@ abstract contract ABalancer is EtherUtils, ReentrancyGuard {
         (amountOutCalculated,) = IbalancerQueries(balancerQueries).queryJoin(poolId, sender, receiver, request);
     }
 
-    function joinImoPool(uint256 EthAmount, uint256 ImoAmount, address sender, address receiver) public {
+    function joinImoPool(uint256 EthAmount, uint256 ImoAmount, address sender, address receiver) internal {
         address[] memory assets = new address[](2);
         assets[0] = IMO;  // 0x0f1D1b7abAeC1Df25f2C4Db751686FC5233f6D3f
         assets[1] = WETH; // 0x4200000000000000000000000000000000000006
