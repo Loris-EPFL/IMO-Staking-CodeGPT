@@ -91,7 +91,7 @@ contract DCBVaultTest is Test {
     function testHarvest() public {
         vm.startPrank(user1, user1);
         stakeToken.approve(address(vault), 100 ether);
-        vault.deposit(0, 1 ether);
+        vault.deposit(0, 32 ether); //30 * 1e18 is 0.0036 ETH (9,44$) + 264,5 IMO (37,15$) = 46,59$
         vm.stopPrank();
 
         // Warp time to accumulate rewards
@@ -106,6 +106,9 @@ contract DCBVaultTest is Test {
         vm.stopPrank();
 
         uint256 finalBalance = rewardsToken.balanceOf(user1);
+        console2.log("imo harvested", (finalBalance - initialBalance) / 1e18);
+        console2.log("imo harvested in $", ((finalBalance - initialBalance) * 14 / (1e18*100))); //imo price is 0,14$
+
         assertTrue(finalBalance > initialBalance);
     }
 
