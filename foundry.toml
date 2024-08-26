@@ -10,3 +10,6 @@ remappings = ['ds-test/=lib/ds-test/src/','forge-std/=lib/forge-std/src/', '@ope
 base = "https://mainnet.base.org"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+[fuzz]
+runs = 1000
