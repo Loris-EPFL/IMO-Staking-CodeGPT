@@ -13,9 +13,12 @@ import { InterestHelper } from "./libraries/InterestHelper.sol";
 import { IDecubateMasterChef } from "./interfaces/IDecubateMasterChef.sol";
 import {Initializable} from "@openzeppelin/proxy/utils/Initializable.sol";
 import {ABalancer} from "./balancer/zapper/ABalancer.sol";
+import {Ownable} from "@openzeppelin/access/Ownable.sol";
+import {RawYieldCalculator} from "./balancer/utils/RawYieldCalculator.sol";
+import {Math} from "@openzeppelin/utils/math/Math.sol";
 
 
-contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChef, Initializable {
+contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChef, Initializable, ABalancer, RawYieldCalculator {
   using SafeERC20 for IERC20;
   /**
    *
@@ -51,7 +54,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
   address public compounderContract; //Auto compounder
   address private feeAddress; //Address which receives fee
   uint8 private feePercent; //Percentage of fee deducted (/1000)
-  uint256 BPTscaling = 100; //Scaling factor for BPT tokens
+  uint256 BPTscaling = 125; //Scaling factor for BPT tokens pool weight
 
 
   // User data
@@ -106,7 +109,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
   }
 
   /// @custom:oz-upgrades-unsafe-allow constructor
-  constructor() {
+  constructor() Ownable(msg.sender){
   }
 
   // Initializer
@@ -509,26 +512,27 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
    * @param _pid  id of the pool
    * @param _addr  address of the user
    */
-  function payout(uint256 _pid, address _addr) public view override returns (uint256 value) {
-    //TODO adjust for BPT tokens
-    User storage user = users[_pid][_addr];
-    Pool storage pool = poolInfo[_pid];
+   function payout(uint256 _pid, address _addr) public view override returns (uint256 value) {
+        User storage user = users[_pid][_addr];
+        Pool storage pool = poolInfo[_pid];
 
-    uint256 from = user.lastPayout > user.depositTime ? user.lastPayout : user.depositTime;
-    uint256 to = block.timestamp > pool.endDate ? pool.endDate : block.timestamp;
+        uint256 userIMO = getUserImoBalance(_addr, pool.stakeToken, user.totalInvested) * BPTscaling / 100;
 
-    uint256 multiplier = calcMultiplier(_pid, _addr);
+        uint256 from = user.lastPayout > user.depositTime ? user.lastPayout : user.depositTime;
+        uint256 to = Math.min(block.timestamp, pool.endDate);
 
-    if (from < to) {
-      uint256 rayValue = yearlyRateToRay((pool.apy * 10 ** 18) / 1000);
-      value = accrueInterest(user.totalInvested, rayValue, to - from) - user.totalInvested;
+        uint256 multiplier = calcMultiplier(_pid, _addr);
+
+        if (from < to) {
+            // Use the new calculateRawYield function
+            // Note: pool.apy is assumed to be in basis points (e.g., 1000 for 10% APY)
+            value = calculateRawYield(userIMO, pool.apy * 100, from, to);
+        }
+
+        value = Math.mulDiv(value, multiplier, 10);
+
+        return value;
     }
-    //Adjust for BPT tokens
-    value = (value * BPTscaling); 
-    value = (value * multiplier) / 10;
-
-    return value;
-  }
 
   /**
    *
@@ -591,7 +595,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
       _checkEnoughRewards(_pid, amount);
       
       user.totalWithdrawn = user.totalWithdrawn + amount;
-    
+
       uint256 feeAmount = (amount * feePercent) / 1000;
 
       amount = amount - feeAmount;

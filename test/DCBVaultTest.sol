@@ -26,6 +26,7 @@ contract DCBVaultTest is Test {
     address public user2;
     address payable[] testsAddresses;
     Utils internal utils;
+    uint256 hardcap = 100000000 ether;
 
     function joinImoPool(uint256 EthAmount, uint256 ImoAmount, address sender, address receiver) public {
         address[] memory assets = new address[](2);
@@ -82,14 +83,15 @@ contract DCBVaultTest is Test {
 
         // Add a pool to MasterChef
         vm.prank(admin);
-        masterChef.add(100, 30, block.timestamp + 365 days, 100000000 ether, address(stakeToken), address(rewardsToken));
-        masterChef.add(10000, 1, block.timestamp + 365 days, 100000000 ether, address(stakeToken), address(rewardsToken));
+        uint256 criticalAPy = 980; //apy that causes overflow
+        masterChef.add(100, 30, block.timestamp + 365 days, hardcap, address(stakeToken), address(rewardsToken));
+        masterChef.add(criticalAPy, 1, block.timestamp + 365 days, hardcap, address(stakeToken), address(rewardsToken));
 
 
         // Mint or transfer tokens to users for testing
         deal(address(stakeToken), user1, 1000 ether);
         deal(address(stakeToken), user2, 1000 ether);
-        deal(address(rewardsToken), address(vault.masterchef()), 10000 ether);
+        deal(address(rewardsToken), address(vault.masterchef()), 100000000000000 ether);
 
 
         
@@ -104,37 +106,50 @@ contract DCBVaultTest is Test {
 
     
 
-    function testDeposit() public {
+    function testDeposit(uint256 depositAmount) public {
+        vm.assume(depositAmount > 0);
+        vm.assume(depositAmount < hardcap);
+        deal(address(stakeToken), user1, depositAmount);
+        uint256 poolID = 1;
         vm.startPrank(user1, user1);
-        stakeToken.approve(address(vault), 100 ether);
-        vault.deposit(0, 100 ether);
+        stakeToken.approve(address(vault), depositAmount);
+        vault.deposit(poolID, depositAmount);
         vm.stopPrank();
 
-        (uint256 shares, , uint256 totalInvested, ) = vault.users(0, user1);
-        assertEq(shares, 100 ether);
-        assertEq(totalInvested, 100 ether);
+        (uint256 shares, , uint256 totalInvested, ) = vault.users(poolID, user1);
+        assertEq(shares, depositAmount);
+        assertEq(totalInvested, depositAmount);
     }
 
-    function testWithdraw() public {
+    function testWithdraw(uint256 zapAmount) public {
+        vm.assume(zapAmount > 0.000001 ether);
+        vm.assume(zapAmount < hardcap);
+        deal(address(stakeToken), user1, zapAmount);
+
         vm.startPrank(user1, user1);
-        stakeToken.approve(address(vault), 100 ether);
-        vault.deposit(0, 100 ether);
+        stakeToken.approve(address(vault), zapAmount);
+        vault.deposit(0, zapAmount);
 
         // Warp time to after lock period
         vm.warp(block.timestamp + 31 days);
 
         uint256 initialBalance = stakeToken.balanceOf(user1);
-        vault.withdraw(0, 100 ether);
+        vault.withdraw(0, zapAmount);
         vm.stopPrank();
 
         uint256 finalBalance = stakeToken.balanceOf(user1);
-        assertEq(finalBalance - initialBalance, 100 ether);
+        assertEq(finalBalance - initialBalance, zapAmount);
     }
 
-    function testHarvest() public {
+    function testHarvest(uint256 stakeAmount) public {
+        vm.assume(stakeAmount > 0);
+        vm.assume(stakeAmount < hardcap);
+        deal(address(stakeToken), user1, stakeAmount);
+        
+        uint256 poolID = 1;
         vm.startPrank(user1, user1);
-        stakeToken.approve(address(vault), 100 ether);
-        vault.deposit(0, 1 ether); //30 * 1e18 is 0.0036 ETH (9,44$) + 264,5 IMO (37,15$) = 46,59$
+        stakeToken.approve(address(vault),stakeAmount);
+        vault.deposit(poolID, stakeAmount); //30 * 1e18 is 0.0036 ETH (9,44$) + 264,5 IMO (37,15$) = 46,59$
         vm.stopPrank();
 
         // Warp time to accumulate rewards
@@ -145,7 +160,7 @@ contract DCBVaultTest is Test {
         console2.log("balance of masterChef", rewardsToken.balanceOf(address(vault.masterchef())));
         uint256 initialBalance = rewardsToken.balanceOf(user1);
         //console2.log("msg sender is", msg.sender);
-        vault.harvest(0);
+        vault.harvest(poolID);
         vm.stopPrank();
 
         uint256 finalBalance = rewardsToken.balanceOf(user1);
@@ -191,9 +206,10 @@ contract DCBVaultTest is Test {
         //assertEq(pendingClaim, stakedAmount, "Pending claim should match staked amount");
     }
 
-    function testWithdrawAfterZap() public {
-
-        uint256 zapAmount = 10e10;
+    function testWithdrawAfterZap(uint256 zapAmount) public {
+        vm.assume(zapAmount > 1 );
+        vm.assume(zapAmount < hardcap);
+        deal(address(stakeToken), user1, zapAmount);
 
         testZapEtherAndStakeIMO(zapAmount);
 
@@ -201,7 +217,7 @@ contract DCBVaultTest is Test {
         vm.warp(block.timestamp + 31 days);
         vm.startPrank(user1, user1);    
         uint256 initialBalance = stakeToken.balanceOf(user1);
-        vault.withdraw(0, zapAmount);
+        vault.withdraw(1, zapAmount);
         vm.stopPrank();
 
         uint256 finalBalance = stakeToken.balanceOf(user1);
@@ -210,14 +226,18 @@ contract DCBVaultTest is Test {
     }
 
 
-    function testCannotWithdrawBeforeLockPeriod() public {
+    function testCannotWithdrawBeforeLockPeriod(uint256 zapAmount) public {
+        vm.assume(zapAmount > 0);
+        vm.assume(zapAmount < hardcap);
+        deal(address(stakeToken), user1, zapAmount);
+
         vm.startPrank(user1, user1);
-        stakeToken.approve(address(vault), 100 ether);
-        vault.deposit(0, 100 ether);
+        stakeToken.approve(address(vault), zapAmount);
+        vault.deposit(1, zapAmount);
 
         // Try to withdraw before lock period
         vm.expectRevert("Stake still locked");
-        vault.withdraw(0, 100 ether);
+        vault.withdraw(1, zapAmount);
         vm.stopPrank();
     }
 

@@ -147,4 +147,20 @@ abstract contract ABalancer is EtherUtils, ReentrancyGuard {
         IVault(vault).joinPool(poolId, sender, receiver, request);
 
     }  
+
+    function getUserImoBalance(address user, address BPTpoolToken, uint256 BPTbalanceofUser) internal view returns (uint256) {
+
+        uint256 totalBPTBalance = IERC20(BPTpoolToken).totalSupply();
+
+        (address[] memory tokens, uint256[] memory balances, ) = IVault(vault).getPoolTokens(poolId);
+
+        for (uint256 i = 0; i < tokens.length; i++) {
+            if (tokens[i] == IMO) {
+                return balances[i] * BPTbalanceofUser / totalBPTBalance;
+            }
+        }
+
+        return 0;
+
+    }
 }
