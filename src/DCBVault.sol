@@ -429,6 +429,9 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
    */
   function harvest(uint256 _pid) public notContract whenNotPaused {
     PoolInfo storage pool = pools[_pid];
+
+    UserInfo storage user = users[_pid][msg.sender];
+
     IERC20 token = getRewardTokenOfPool(_pid);
 
     uint256 prevBal = token.balanceOf(address(this));
@@ -447,6 +450,8 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     pool.pendingClaim += claimed;
 
     SafeERC20.safeTransfer(token, msg.sender, claimed);
+    user.totalClaimed += claimed;
+
 
     emit Harvest(msg.sender, _pid, block.timestamp);
 
