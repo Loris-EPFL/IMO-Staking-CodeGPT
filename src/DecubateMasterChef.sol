@@ -119,7 +119,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     _grantRole(MANAGER_ROLE, msg.sender);
 
     feeAddress = msg.sender;
-    feePercent = 5;
+    feePercent = 0;
   }
 
   function setManagerRole(address _user, bool _status) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -555,6 +555,9 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
   function getPools() external view returns (Pool[] memory) {
     return poolInfo;
   }
+
+  
+
 
   /**
    * @dev Token transfer function

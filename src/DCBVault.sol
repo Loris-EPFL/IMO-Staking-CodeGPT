@@ -23,6 +23,8 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     uint256 lastDepositedTime; // keeps track of deposited time for potential penalty
     uint256 totalInvested; // Total amount of token invested
     uint256 totalClaimed; // Total amount of token claimed
+    uint256 rewardsDebt; // The amount of rewards already accounted for
+
   }
 
   struct PoolInfo {
@@ -52,6 +54,9 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
   mapping(uint256 => mapping(address => UserInfo)) public users;
   // Pool info
   mapping(uint256 => PoolInfo) public pools;
+
+  mapping(uint256 => uint256) public accumulatedRewardsPerShare;
+
   // Pool rebate info
   mapping(uint256 => Rebate) public rebates;
   // Deposit fee info
@@ -259,6 +264,8 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     user.shares += currentShares;
     user.lastDepositedTime = block.timestamp;
     user.totalInvested += _amount;
+    user.rewardsDebt = (user.shares * accumulatedRewardsPerShare[_pid]) / 1e12;
+
 
     pool.totalShares += currentShares;
     pool.pendingClaim += _amount;
@@ -370,18 +377,27 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
   }
 
   /**
-   * @notice Calculate the reward user receives on withdraw
-   * @param _user User address
-   * @param _pid Pool id
-   * @return reward Reward amount
-   */
-  function getRewardOfUser(address _user, uint256 _pid) external view returns (uint256 reward) {
+ * @notice Calculate the reward user receives on withdraw
+ * @param _user User address
+ * @param _pid Pool id
+ * @return reward Reward amount
+ */
+function getRewardOfUser(address _user, uint256 _pid) external view returns (uint256 reward) {
     UserInfo storage user = users[_pid][_user];
-    uint256 pricePerFullShare = getPricePerFullShare(_pid);
-    uint256 userTotal = (user.shares * pricePerFullShare) / 1e18;
+    PoolInfo storage pool = pools[_pid];
 
-    reward = userTotal >= user.totalInvested ? userTotal - user.totalInvested : 0;
-  }
+    uint256 accRewardsPerShare = accumulatedRewardsPerShare[_pid];
+    uint256 lpSupply = pool.totalShares;
+
+    if (lpSupply > 0) {
+        uint256 pending = masterchef.payout(_pid, address(this));
+        accRewardsPerShare += (pending * 1e12) / lpSupply;
+    }
+
+    uint256 pending = (user.shares * accRewardsPerShare) / 1e12 - user.rewardsDebt;
+    return pending;
+}
+
 
   /**
    * @notice Withdraws funds from the DCB Vault
@@ -403,6 +419,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
   
     uint256 totalReward = currentAmount - (user.totalInvested * _shares) / user.shares;
 
+    user.rewardsDebt = (user.shares * accumulatedRewardsPerShare[_pid]) / 1e12;
     user.totalInvested -= (user.totalInvested * _shares) / user.shares;
     user.shares -= _shares;
     pool.totalShares -= _shares;
@@ -429,33 +446,39 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
    */
   function harvest(uint256 _pid) public notContract whenNotPaused {
     PoolInfo storage pool = pools[_pid];
-
     UserInfo storage user = users[_pid][msg.sender];
 
     IERC20 token = getRewardTokenOfPool(_pid);
 
     uint256 prevBal = token.balanceOf(address(this));
-    uint256 prevBalMasterChef = token.balanceOf(msg.sender);
-
-    masterchef.canClaim(_pid, msg.sender);
+    
+    masterchef.canClaim(_pid, address(this));
     bool isClaimSuccess = masterchef.claim(_pid);
     require(isClaimSuccess, "Claim failed");
     
     uint256 claimed = token.balanceOf(address(this)) - prevBal;
-    if (claimed == 0) revert NoBalance();
     
     uint256 currentCallFee = (claimed * callFee) / DIVISOR;
     claimed -= currentCallFee;
+    // Update accumulated rewards per share
+    accumulatedRewardsPerShare[_pid] += (claimed * 1e12) / pool.totalShares;
+    
+    // Calculate the user's share of rewards
+    uint256 pending = (user.shares * accumulatedRewardsPerShare[_pid]) / 1e12 - user.rewardsDebt;
+    
+    if (pending > 0) {
+        SafeERC20.safeTransfer(token, msg.sender, pending);
+        user.totalClaimed += pending;
+    }
+    
+    // Update user's rewards debt
+    user.rewardsDebt = (user.shares * accumulatedRewardsPerShare[_pid]) / 1e12;
+
     pool.lastHarvestedTime = block.timestamp;
-    pool.pendingClaim += claimed;
-
-    SafeERC20.safeTransfer(token, msg.sender, claimed);
-    user.totalClaimed += claimed;
-
 
     emit Harvest(msg.sender, _pid, block.timestamp);
+}
 
-  }
 
   /**
    * @notice Returns the price per full share
