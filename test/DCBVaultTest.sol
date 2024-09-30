@@ -116,7 +116,7 @@ contract DCBVaultTest is Test {
         vault.deposit(poolID, depositAmount);
         vm.stopPrank();
 
-        (uint256 shares, , uint256 totalInvested, ) = vault.users(poolID, user1);
+        (uint256 shares, , uint256 totalInvested, , ) = vault.users(poolID, user1);
         assertEq(shares, depositAmount);
         assertEq(totalInvested, depositAmount);
     }
@@ -195,7 +195,7 @@ contract DCBVaultTest is Test {
         //assertGt(stakeToken.balanceOf(address(vault)), initialStakeTokenBalance, "Vault should have received stake tokens");
 
         // Check user's position in the vault
-        (uint256 shares, uint256 lastDepositedTime, uint256 totalInvested, ) = vault.users(pid, user1);
+        (uint256 shares, uint256 lastDepositedTime, uint256 totalInvested, , ) = vault.users(pid, user1);
         assertGt(shares, 0, "User should have shares");
         assertEq(lastDepositedTime, block.timestamp, "Last deposited time should be updated");
         assertEq(totalInvested,stakedAmount, "Total invested should match staked amount");
@@ -275,4 +275,292 @@ contract DCBVaultTest is Test {
         uint256 pricePerFullShare = vault.getPricePerFullShare(0);
         assertEq(pricePerFullShare, 1e18);
     }
+
+    function testEqualDeposits() public {
+        uint256 depositAmount = 100 ether;
+        uint256 POOL_ID = 0;
+        deal(address(stakeToken), user1, depositAmount);
+        deal(address(stakeToken), user2, depositAmount);
+
+        vm.prank(user1, user1);
+        stakeToken.approve(address(vault), depositAmount);
+
+        vm.prank(user2, user2);
+        stakeToken.approve(address(vault), depositAmount);
+
+
+        // Users deposit equal amounts
+        vm.prank(user1, user1);
+        vault.deposit(POOL_ID, depositAmount);
+
+        vm.prank(user2, user2);
+        vault.deposit(POOL_ID, depositAmount);
+
+        // Advance time
+        vm.warp(block.timestamp + 365 days);
+
+        // Check rewards
+        uint256 user1Rewards = vault.getRewardOfUser(user1, POOL_ID);
+        uint256 user2Rewards = vault.getRewardOfUser(user2, POOL_ID);
+
+        assertNotEq(user1Rewards, 0);
+
+        assertNotEq(user2Rewards, 0);
+        assertApproxEqRel(user1Rewards, user2Rewards, 1e15); // Allow 0.1% difference due to rounding
+
+       // Harvest rewards
+        uint256 rewardsTokenUser1BeforeHarvest = rewardsToken.balanceOf(user1);
+
+        vm.prank(user1, user1);
+        vault.harvest(0);
+        uint256 rewardsTokenUser1AfterHarvest = rewardsToken.balanceOf(user1);
+        uint256 user1Harvested = rewardsTokenUser1AfterHarvest - rewardsTokenUser1BeforeHarvest;
+
+        assertApproxEqRel(user1Harvested, user1Rewards, 1e15); // Allow 0.1% difference due to rounding
+
+        uint256 rewardsTokenUser2BeforeHarvest = rewardsToken.balanceOf(user2);
+        vm.prank(user2, user2);
+        vault.harvest(0);
+        uint256 rewardsTokenUser2AfterHarvest = rewardsToken.balanceOf(user2);
+        uint256 user2Harvested = rewardsTokenUser2AfterHarvest - rewardsTokenUser2BeforeHarvest;
+
+        assertApproxEqRel(user2Harvested, user2Rewards, 1e15); // Allow 0.1% difference due to rounding
+
+        assertApproxEqRel(user1Harvested, user2Harvested, 1e15); // Allow 0.1% difference due to rounding
+
+        // Withdraw
+        uint256 stakeTokenUser1BeforeWithdraw = stakeToken.balanceOf(user1);
+        vm.prank(user1, user1);
+        vault.withdraw(0, depositAmount);
+        uint256 stakeTokenUser1AfterWithdraw = stakeToken.balanceOf(user1);
+
+        uint256 diffUser1 = stakeTokenUser1AfterWithdraw - stakeTokenUser1BeforeWithdraw;
+        assertEq(diffUser1, depositAmount);
+
+
+        uint256 stakeTokenUser2BeforeWithdraw = stakeToken.balanceOf(user2);
+        vm.prank(user2, user2);
+        vault.withdraw(0, depositAmount);
+        uint256 stakeTokenUser2AfterWithdraw = stakeToken.balanceOf(user2);
+
+        uint256 diffUser2 = stakeTokenUser2AfterWithdraw - stakeTokenUser2BeforeWithdraw;
+        assertEq(diffUser2, depositAmount);
+
+        assertEq(diffUser1, diffUser2);
+    }
+
+    function testEqualDepositsFuzz(uint256 amountIn) public {
+        vm.assume(amountIn > 0 && amountIn < hardcap /2);
+        uint256 depositAmount = amountIn;
+        uint256 POOL_ID = 0;
+        deal(address(stakeToken), user1, depositAmount);
+        deal(address(stakeToken), user2, depositAmount);
+
+        vm.prank(user1, user1);
+        stakeToken.approve(address(vault), depositAmount);
+
+        vm.prank(user2, user2);
+        stakeToken.approve(address(vault), depositAmount);
+
+
+        // Users deposit equal amounts
+        vm.prank(user1, user1);
+        vault.deposit(POOL_ID, depositAmount);
+
+        vm.prank(user2, user2);
+        vault.deposit(POOL_ID, depositAmount);
+
+        // Advance time
+        vm.warp(block.timestamp + 365 days);
+
+        // Check rewards
+        uint256 user1Rewards = vault.getRewardOfUser(user1, POOL_ID);
+        uint256 user2Rewards = vault.getRewardOfUser(user2, POOL_ID);
+
+        assertNotEq(user1Rewards, 0);
+
+        assertNotEq(user2Rewards, 0);
+        assertApproxEqRel(user1Rewards, user2Rewards, 1e15); // Allow 0.1% difference due to rounding
+
+       // Harvest rewards
+        uint256 rewardsTokenUser1BeforeHarvest = rewardsToken.balanceOf(user1);
+
+        vm.prank(user1, user1);
+        vault.harvest(0);
+        uint256 rewardsTokenUser1AfterHarvest = rewardsToken.balanceOf(user1);
+        uint256 user1Harvested = rewardsTokenUser1AfterHarvest - rewardsTokenUser1BeforeHarvest;
+
+        assertApproxEqRel(user1Harvested, user1Rewards, 1e15); // Allow 0.1% difference due to rounding
+
+        uint256 rewardsTokenUser2BeforeHarvest = rewardsToken.balanceOf(user2);
+        vm.prank(user2, user2);
+        vault.harvest(0);
+        uint256 rewardsTokenUser2AfterHarvest = rewardsToken.balanceOf(user2);
+        uint256 user2Harvested = rewardsTokenUser2AfterHarvest - rewardsTokenUser2BeforeHarvest;
+
+        assertApproxEqRel(user2Harvested, user2Rewards, 1e15); // Allow 0.1% difference due to rounding
+
+        assertApproxEqRel(user1Harvested, user2Harvested, 1e15); // Allow 0.1% difference due to rounding
+
+        // Withdraw
+        uint256 stakeTokenUser1BeforeWithdraw = stakeToken.balanceOf(user1);
+        vm.prank(user1, user1);
+        vault.withdraw(0, depositAmount);
+        uint256 stakeTokenUser1AfterWithdraw = stakeToken.balanceOf(user1);
+
+        uint256 diffUser1 = stakeTokenUser1AfterWithdraw - stakeTokenUser1BeforeWithdraw;
+        assertEq(diffUser1, depositAmount);
+
+
+        uint256 stakeTokenUser2BeforeWithdraw = stakeToken.balanceOf(user2);
+        vm.prank(user2, user2);
+        vault.withdraw(0, depositAmount);
+        uint256 stakeTokenUser2AfterWithdraw = stakeToken.balanceOf(user2);
+
+        uint256 diffUser2 = stakeTokenUser2AfterWithdraw - stakeTokenUser2BeforeWithdraw;
+        assertEq(diffUser2, depositAmount);
+
+        assertEq(diffUser1, diffUser2);
+    }
+
+    function testDifferentDeposits() public {
+        uint256 depositAmount1 = 100 ether;
+        uint256 depositAmount2 = 200 ether;
+        uint256 POOL_ID = 0;
+
+        deal(address(stakeToken), user1, depositAmount1);
+        deal(address(stakeToken), user2, depositAmount2);
+
+        vm.prank(user1, user1);
+        stakeToken.approve(address(vault), depositAmount1);
+
+        vm.prank(user2, user2);
+        stakeToken.approve(address(vault), depositAmount2);
+
+        // Users deposit equal amounts
+        vm.prank(user1, user1);
+        vault.deposit(POOL_ID, depositAmount1);
+
+        vm.prank(user2, user2);
+        vault.deposit(POOL_ID, depositAmount2);
+
+        // Advance time
+        vm.warp(block.timestamp + 365 days);
+
+        // Check rewards
+        uint256 user1Rewards = vault.getRewardOfUser(user1, POOL_ID);
+        uint256 user2Rewards = vault.getRewardOfUser(user2, POOL_ID);
+
+        assertGt(user2Rewards, user1Rewards); // User2 should have more rewards
+        assertApproxEqRel(user1Rewards *2, user2Rewards, 1e15); // Allow 0.1% difference between 2 times rewards of user1
+
+        // Harvest rewards
+        uint256 rewardsTokenUser1BeforeHarvest = rewardsToken.balanceOf(user1);
+
+        vm.prank(user1, user1);
+        vault.harvest(0);
+        uint256 rewardsTokenUser1AfterHarvest = rewardsToken.balanceOf(user1);
+        uint256 user1Harvested = rewardsTokenUser1AfterHarvest - rewardsTokenUser1BeforeHarvest;
+
+        uint256 rewardsTokenUser2BeforeHarvest = rewardsToken.balanceOf(user2);
+        vm.prank(user2, user2);
+        vault.harvest(0);
+        uint256 rewardsTokenUser2AfterHarvest = rewardsToken.balanceOf(user2);
+        uint256 user2Harvested = rewardsTokenUser2AfterHarvest - rewardsTokenUser2BeforeHarvest;
+
+        assertGt(user2Harvested, user1Harvested); // User2 should have more rewards
+        assertApproxEqRel(user1Harvested *2 , user2Harvested, 1e15); // Allow 0.1% difference due to rounding
+
+        // Withdraw
+        uint256 stakeTokenUser1BeforeWithdraw = stakeToken.balanceOf(user1);
+        vm.prank(user1, user1);
+        vault.withdraw(0, depositAmount1);
+        uint256 stakeTokenUser1AfterWithdraw = stakeToken.balanceOf(user1);
+
+        uint256 diffUser1 = stakeTokenUser1AfterWithdraw - stakeTokenUser1BeforeWithdraw;
+        assertEq(diffUser1, depositAmount1);
+
+
+        uint256 stakeTokenUser2BeforeWithdraw = stakeToken.balanceOf(user2);
+        vm.prank(user2, user2);
+        vault.withdraw(0, depositAmount2);
+        uint256 stakeTokenUser2AfterWithdraw = stakeToken.balanceOf(user2);
+
+        uint256 diffUser2 = stakeTokenUser2AfterWithdraw - stakeTokenUser2BeforeWithdraw;
+        assertEq(diffUser2, depositAmount2);
+
+        assertGt(diffUser2, diffUser1);
+    }
+
+    function testDifferentDepositsFuzz(uint256 amountIn) public {
+        vm.assume(amountIn > 100 && amountIn < hardcap /3);
+        uint256 depositAmount1 = amountIn;
+        uint256 depositAmount2 = 2* amountIn;
+        uint256 POOL_ID = 0;
+
+        deal(address(stakeToken), user1, depositAmount1);
+        deal(address(stakeToken), user2, depositAmount2);
+
+        vm.prank(user1, user1);
+        stakeToken.approve(address(vault), depositAmount1);
+
+        vm.prank(user2, user2);
+        stakeToken.approve(address(vault), depositAmount2);
+
+        // Users deposit equal amounts
+        vm.prank(user1, user1);
+        vault.deposit(POOL_ID, depositAmount1);
+
+        vm.prank(user2, user2);
+        vault.deposit(POOL_ID, depositAmount2);
+
+        // Advance time
+        vm.warp(block.timestamp + 365 days);
+
+        // Check rewards
+        uint256 user1Rewards = vault.getRewardOfUser(user1, POOL_ID);
+        uint256 user2Rewards = vault.getRewardOfUser(user2, POOL_ID);
+
+        assertGt(user2Rewards, user1Rewards); // User2 should have more rewards
+        assertApproxEqRel(user1Rewards *2, user2Rewards, 1e15); // Allow 0.1% difference between 2 times rewards of user1
+
+        // Harvest rewards
+        uint256 rewardsTokenUser1BeforeHarvest = rewardsToken.balanceOf(user1);
+
+        vm.prank(user1, user1);
+        vault.harvest(0);
+        uint256 rewardsTokenUser1AfterHarvest = rewardsToken.balanceOf(user1);
+        uint256 user1Harvested = rewardsTokenUser1AfterHarvest - rewardsTokenUser1BeforeHarvest;
+
+        uint256 rewardsTokenUser2BeforeHarvest = rewardsToken.balanceOf(user2);
+        vm.prank(user2, user2);
+        vault.harvest(0);
+        uint256 rewardsTokenUser2AfterHarvest = rewardsToken.balanceOf(user2);
+        uint256 user2Harvested = rewardsTokenUser2AfterHarvest - rewardsTokenUser2BeforeHarvest;
+
+        assertGt(user2Harvested, user1Harvested); // User2 should have more rewards
+        assertApproxEqRel(user1Harvested *2 , user2Harvested, 1e15); // Allow 0.1% difference due to rounding
+
+        // Withdraw
+        uint256 stakeTokenUser1BeforeWithdraw = stakeToken.balanceOf(user1);
+        vm.prank(user1, user1);
+        vault.withdraw(0, depositAmount1);
+        uint256 stakeTokenUser1AfterWithdraw = stakeToken.balanceOf(user1);
+
+        uint256 diffUser1 = stakeTokenUser1AfterWithdraw - stakeTokenUser1BeforeWithdraw;
+        assertEq(diffUser1, depositAmount1);
+
+
+        uint256 stakeTokenUser2BeforeWithdraw = stakeToken.balanceOf(user2);
+        vm.prank(user2, user2);
+        vault.withdraw(0, depositAmount2);
+        uint256 stakeTokenUser2AfterWithdraw = stakeToken.balanceOf(user2);
+
+        uint256 diffUser2 = stakeTokenUser2AfterWithdraw - stakeTokenUser2BeforeWithdraw;
+        assertEq(diffUser2, depositAmount2);
+
+        assertGt(diffUser2, diffUser1);
+    }
+
+
 }
