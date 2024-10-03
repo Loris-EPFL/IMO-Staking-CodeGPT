@@ -598,7 +598,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
       
       _checkEnoughRewards(_pid, amount);
       
-      user.totalWithdrawn = user.totalWithdrawn + amount;
+      //user.totalWithdrawn = user.totalWithdrawn + amount;
 
       uint256 feeAmount = (amount * feePercent) / 1000;
 
