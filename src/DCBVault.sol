@@ -452,7 +452,8 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
 
     uint256 prevBal = token.balanceOf(address(this));
     
-    masterchef.canClaim(_pid, address(this));
+    //Remove Cannot Claim Rewards while Stake is Locked
+    //masterchef.canClaim(_pid, address(this));
     bool isClaimSuccess = masterchef.claim(_pid);
     require(isClaimSuccess, "Claim failed");
     

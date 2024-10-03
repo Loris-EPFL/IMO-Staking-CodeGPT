@@ -351,7 +351,8 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
    */
 
   function claim(uint256 _pid) external override returns (bool) {
-    require(canClaim(_pid, msg.sender), "Reward still locked");
+    //Remove Lock of Rewards since we want to be able to claim while Locked
+    //require(canClaim(_pid, msg.sender), "Reward still locked");
 
     _claim(_pid, msg.sender);
 
@@ -597,7 +598,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
       
       _checkEnoughRewards(_pid, amount);
       
-      user.totalWithdrawn = user.totalWithdrawn + amount;
+      //user.totalWithdrawn = user.totalWithdrawn + amount;
 
       uint256 feeAmount = (amount * feePercent) / 1000;
 
