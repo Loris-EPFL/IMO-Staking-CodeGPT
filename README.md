@@ -53,7 +53,7 @@ $ forge test -vvvv --rpc-url https://base-rpc.publicnode.com
 ### Deploy
 
 ```shell
-$ forge script script/DCBVaultDeploy.s.sol:DeployScript --rpc-url <your_rpc_url> --private-key <your_private_key> --verif- --etherscan-api-key <your_api_key> --broadcast
+$ forge script script/DCBVaultDeploy.s.sol:DeployScript --rpc-url https://base-rpc.publicnode.com --private-key <your_private_key> --verify --etherscan-api-key <your_api_key> --broadcast
 ```
 
 ### Cast
