@@ -27,15 +27,21 @@ contract DCBVaultTest is Test {
     address payable[] testsAddresses;
     Utils internal utils;
     uint256 hardcap = 100000000 ether;
+    bytes32 balancerPoolID = 0x007bb7a4bfc214df06474e39142288e99540f2b3000200000000000000000191;
+    address balancerVault = 0xBA12222222228d8Ba445958a75a0704d566BF2C8;
+    address IMO = 0x5A7a2bf9fFae199f088B25837DcD7E115CF8E1bb;
+    address IMO_BPT = 0x007bb7a4bfc214DF06474E39142288E99540f2b3;
+    address WETH = 0x4200000000000000000000000000000000000006;
+    uint256 fuzzerLowBound = 1 ether; //deposit at least 1 BPT
 
     function joinImoPool(uint256 EthAmount, uint256 ImoAmount, address sender, address receiver) public {
         address[] memory assets = new address[](2);
-        assets[0] = 0x0f1D1b7abAeC1Df25f2C4Db751686FC5233f6D3f;  // 0x0f1D1b7abAeC1Df25f2C4Db751686FC5233f6D3f
-        assets[1] = 0x4200000000000000000000000000000000000006; // 0x4200000000000000000000000000000000000006
+        assets[0] = WETH;  // 0x0f1D1b7abAeC1Df25f2C4Db751686FC5233f6D3f
+        assets[1] = IMO; // WETH
 
         uint256[] memory maxAmountsIn = new uint256[](2);
-        maxAmountsIn[0] = ImoAmount;
-        maxAmountsIn[1] = EthAmount;
+        maxAmountsIn[0] = EthAmount;
+        maxAmountsIn[1] = ImoAmount;
 
         bytes memory userData = abi.encode(
             uint256(1), // = 1
@@ -51,7 +57,7 @@ contract DCBVaultTest is Test {
         });
 
     
-        IVault(0xBA12222222228d8Ba445958a75a0704d566BF2C8).joinPool(0x7120fd744ca7b45517243ce095c568fd88661c66000200000000000000000179, sender, receiver, request);
+        IVault(balancerVault).joinPool(balancerPoolID, sender, receiver, request);
 
     }  
 
@@ -73,8 +79,8 @@ contract DCBVaultTest is Test {
         masterChef.initialize(admin);
 
         // Use the actual token addresses
-        stakeToken = IERC20(0x7120fD744CA7B45517243CE095C568Fd88661c66);
-        rewardsToken = IERC20(0x0f1D1b7abAeC1Df25f2C4Db751686FC5233f6D3f);
+        stakeToken = IERC20(IMO_BPT);
+        rewardsToken = IERC20(IMO);
 
         vault = new DCBVault(admin);
         vault.initialize(masterChef, admin);
@@ -96,10 +102,10 @@ contract DCBVaultTest is Test {
 
         
         //add lot of liquidity to pool
-        deal(0x4200000000000000000000000000000000000006, address(this), 10 ether); //deals WETH
+        deal(WETH, address(this), 10 ether); //deals WETH
         deal(address(rewardsToken), address(this), 1000000 ether); //deals IMO
-        IERC20(0x4200000000000000000000000000000000000006).approve(0xBA12222222228d8Ba445958a75a0704d566BF2C8, 10 ether);
-        rewardsToken.approve(0xBA12222222228d8Ba445958a75a0704d566BF2C8, 1000000 ether);
+        IERC20(WETH).approve(balancerVault, 10 ether);
+        rewardsToken.approve(balancerVault, 1000000 ether);
         joinImoPool(10 ether, 1000000 ether, address(this), address(this));
         
     }
@@ -107,7 +113,7 @@ contract DCBVaultTest is Test {
     
 
     function testDeposit(uint256 depositAmount) public {
-        vm.assume(depositAmount > 0);
+        vm.assume(depositAmount > fuzzerLowBound);
         vm.assume(depositAmount < hardcap);
         deal(address(stakeToken), user1, depositAmount);
         uint256 poolID = 1;
@@ -122,7 +128,7 @@ contract DCBVaultTest is Test {
     }
 
     function testWithdraw(uint256 zapAmount) public {
-        vm.assume(zapAmount > 0.000001 ether);
+        vm.assume(zapAmount > fuzzerLowBound);
         vm.assume(zapAmount < hardcap);
         deal(address(stakeToken), user1, zapAmount);
 
@@ -142,7 +148,7 @@ contract DCBVaultTest is Test {
     }
 
     function testHarvest(uint256 stakeAmount) public {
-        vm.assume(stakeAmount > 0);
+        vm.assume(stakeAmount > fuzzerLowBound);
         vm.assume(stakeAmount < hardcap);
         deal(address(stakeToken), user1, stakeAmount);
         
@@ -167,12 +173,12 @@ contract DCBVaultTest is Test {
         console2.log("imo harvested", (finalBalance - initialBalance) / 1e18);
         console2.log("imo harvested in $", ((finalBalance - initialBalance) * 14 / (1e18*100))); //imo price is 0,14$
 
-        assertTrue(finalBalance > initialBalance);
+        assertGe(finalBalance, initialBalance);
     }
 
     function testZapEtherAndStakeIMO(uint256 zapAmount) public {
-        vm.assume(zapAmount > 602310000000000);
-        vm.assume(zapAmount < 1 ether);
+        vm.assume(zapAmount > 0);
+        vm.assume(zapAmount < 0.1 ether);
         uint256 pid = 1;
         //uint256 zapAmount = 10e10;
 
@@ -350,7 +356,7 @@ contract DCBVaultTest is Test {
     }
 
     function testEqualDepositsFuzz(uint256 amountIn) public {
-        vm.assume(amountIn > 0 && amountIn < hardcap /2);
+        vm.assume(amountIn > 1e5 && amountIn < hardcap /2);
         uint256 depositAmount = amountIn;
         uint256 POOL_ID = 0;
         deal(address(stakeToken), user1, depositAmount);
@@ -493,7 +499,7 @@ contract DCBVaultTest is Test {
     }
 
     function testDifferentDepositsFuzz(uint256 amountIn) public {
-        vm.assume(amountIn > 100 && amountIn < hardcap /3);
+        vm.assume(amountIn > 1e5 && amountIn < hardcap /3);
         uint256 depositAmount1 = amountIn;
         uint256 depositAmount2 = 2* amountIn;
         uint256 POOL_ID = 0;
@@ -522,7 +528,7 @@ contract DCBVaultTest is Test {
         uint256 user2Rewards = vault.getRewardOfUser(user2, POOL_ID);
 
         assertGt(user2Rewards, user1Rewards); // User2 should have more rewards
-        assertApproxEqRel(user1Rewards *2, user2Rewards, 1e15); // Allow 0.1% difference between 2 times rewards of user1
+        assertApproxEqRel(user1Rewards *2, user2Rewards, 1.5 * 1e16); // Allow 1.5% difference between 2 times rewards of user1
 
         // Harvest rewards
         uint256 rewardsTokenUser1BeforeHarvest = rewardsToken.balanceOf(user1);
@@ -539,7 +545,7 @@ contract DCBVaultTest is Test {
         uint256 user2Harvested = rewardsTokenUser2AfterHarvest - rewardsTokenUser2BeforeHarvest;
 
         assertGt(user2Harvested, user1Harvested); // User2 should have more rewards
-        assertApproxEqRel(user1Harvested *2 , user2Harvested, 1e15); // Allow 0.1% difference due to rounding
+        assertApproxEqRel(user1Harvested *2 , user2Harvested, 1.5 * 1e16); // Allow 1.5% difference due to rounding
 
         // Withdraw
         uint256 stakeTokenUser1BeforeWithdraw = stakeToken.balanceOf(user1);

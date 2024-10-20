@@ -19,6 +19,12 @@ contract DecubateMasterChefTest is Test {
     Utils internal utils;
     address public admin;
     address public feeAdress;
+
+    bytes32 balancerPoolID = 0x007bb7a4bfc214df06474e39142288e99540f2b3000200000000000000000191;
+    address balancerVault = balancerVault;
+    address IMO = 0x5A7a2bf9fFae199f088B25837DcD7E115CF8E1bb;
+    address IMO_BPT = 0x007bb7a4bfc214DF06474E39142288E99540f2b3;
+    address WETH = 0x4200000000000000000000000000000000000006;
    
 
     function setUp() public {
@@ -37,8 +43,8 @@ contract DecubateMasterChefTest is Test {
 
         users = utils.createUsers(2);
 
-        stakeToken = IERC20(0x7120fD744CA7B45517243CE095C568Fd88661c66); // Balancer 75 IMO / 25 WETH pool token
-        rewardsToken = IERC20(0x0f1D1b7abAeC1Df25f2C4Db751686FC5233f6D3f); // IMO token
+        stakeToken = IERC20(IMO_BPT); // Balancer 75 IMO / 25 WETH pool token
+        rewardsToken = IERC20(IMO); // IMO token
 
 
         // Assume we have a way to mint or transfer tokens to users for testing
