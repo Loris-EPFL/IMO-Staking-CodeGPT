@@ -386,6 +386,11 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
     uint256 accRewardsPerShare = accumulatedRewardsPerShare[_pid];
     uint256 lpSupply = pool.totalShares;
 
+    if (lpSupply > 0) {
+        uint256 pendingRewardsForAddress = masterchef.payout(_pid, address(this));
+        accRewardsPerShare += (pendingRewardsForAddress * 1e12) / lpSupply;
+    }
+
     uint256 pending = (user.shares * accRewardsPerShare) / 1e12 - user.rewardsDebt;
     return pending;
 }
