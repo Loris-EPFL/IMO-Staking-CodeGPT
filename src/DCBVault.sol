@@ -160,9 +160,6 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
           
         ) = masterchef.poolInfo(_pid);
 
-          
-        
-
         uint256 stopDepo = endDate - (lockPeriodInDays * 1 days);
         require(block.timestamp <= stopDepo, "Staking disabled for this pool");
 
@@ -198,7 +195,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
         if (pool.totalShares != 0) {
           currentShares = (stakedAmount * pool.totalShares) / poolBal;
         } else {
-          stakeTokenERC.approve(address(masterchef), type(uint256).max);
+          stakeTokenERC.safeIncreaseAllowance(address(masterchef), type(uint256).max);
           currentShares = stakedAmount;
         }
 
@@ -255,7 +252,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     if (pool.totalShares != 0) {
       currentShares = (_amount * pool.totalShares) / poolBal;
     } else {
-      token.approve(address(masterchef), type(uint256).max);
+      token.safeIncreaseAllowance(address(masterchef), type(uint256).max);
       currentShares = _amount;
     }
 
@@ -389,11 +386,6 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
     uint256 accRewardsPerShare = accumulatedRewardsPerShare[_pid];
     uint256 lpSupply = pool.totalShares;
 
-    if (lpSupply > 0) {
-        uint256 pending = masterchef.payout(_pid, address(this));
-        accRewardsPerShare += (pending * 1e12) / lpSupply;
-    }
-
     uint256 pending = (user.shares * accRewardsPerShare) / 1e12 - user.rewardsDebt;
     return pending;
 }
@@ -425,15 +417,8 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
     pool.totalShares -= _shares;
    
     IERC20 token = getTokenOfPool(_pid);
-    masterchef.unStake(_pid, currentAmount);
-
-    (, uint256 lockPeriod, , , , , ,) = masterchef.poolInfo(_pid);
-    if (block.timestamp < user.lastDepositedTime + (lockPeriod * 1 days)) {
-      uint256 penalty = (currentAmount * rebates[_pid].earlyWithdrawPenalty) / DIVISOR;
-      token.safeTransfer(address(masterchef), penalty);
-      currentAmount -= penalty;
-      emit WithdrawPenalty(msg.sender, _pid, penalty);
-    }
+    bool didUnstake = masterchef.unStake(_pid, currentAmount);
+    require(didUnstake, "Unstake failed");
 
     token.safeTransfer(msg.sender, currentAmount);
 
@@ -452,8 +437,6 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
 
     uint256 prevBal = token.balanceOf(address(this));
     
-    //Remove Cannot Claim Rewards while Stake is Locked
-    //masterchef.canClaim(_pid, address(this));
     bool isClaimSuccess = masterchef.claim(_pid);
     require(isClaimSuccess, "Claim failed");
     

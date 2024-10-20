@@ -121,7 +121,7 @@ abstract contract ABalancer is EtherUtils, ReentrancyGuard {
         (amountOutCalculated,) = IbalancerQueries(balancerQueries).queryJoin(poolId, sender, receiver, request);
     }
 
-    function joinImoPool(uint256 EthAmount, uint256 ImoAmount, address sender, address receiver) internal {
+    function joinImoPool(uint256 EthAmount, uint256 ImoAmount, address sender, address receiver) public {
         address[] memory assets = new address[](2);
         assets[0] = IMO;  // 0x0f1D1b7abAeC1Df25f2C4Db751686FC5233f6D3f
         assets[1] = WETH; // 0x4200000000000000000000000000000000000006

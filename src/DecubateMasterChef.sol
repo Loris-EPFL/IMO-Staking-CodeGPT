@@ -51,7 +51,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
 
   }
 
-  address public compounderContract; //Auto compounder
+  //address public compounderContract; //Auto compounder
   address private feeAddress; //Address which receives fee
   uint8 private feePercent; //Percentage of fee deducted (/1000)
   uint256 BPTscaling = 125; //Scaling factor for BPT tokens pool weight
@@ -65,7 +65,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
   // Pool info
   Pool[] public poolInfo;
   // NFT info
-  NFTMultiplier[] public nftInfo;
+  //NFTMultiplier[] public nftInfo;
 
   bytes32 internal constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
 
@@ -149,22 +149,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     BPTscaling = _scaling;
   }
 
-  /**
-   *
-   * @dev update compounder contract
-   *
-   * @param _compounder address of the compounder contract
-   *
-   */
-  function updateCompounder(address _compounder) external override onlyManager {
-    require(_compounder != address(0), "Zero address");
-    if (compounderContract == address(0)) compounderContract = _compounder;
-    for (uint256 i = 0; i < poolInfo.length; i++) {
-      IERC20(poolInfo[i].stakeToken).approve(compounderContract, type(uint256).max);
-    }
-
-    emit CompounderUpdated(_compounder);
-  }
+  
 
   /**
    *
@@ -200,21 +185,8 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
       })
     );
 
-    //Init nft struct with dummy data
-    nftInfo.push(
-      NFTMultiplier({
-        active: false,
-        name: "",
-        contractAdd: address(0),
-        startIdx: 0,
-        endIdx: 0,
-        multiplier: 10
-      })
-    );
 
     maxTransferAmount[_stakeToken] = ~uint256(0);
-    _stake(poolLength() - 1, compounderContract, 0, false); //Mock deposit for compounder
-    IERC20(_stakeToken).approve(compounderContract, type(uint256).max);
 
     emit PoolAdded(_apy, _lockPeriodInDays, _endDate, _hardCap, _stakeToken, _rewardsToken);
   }
@@ -254,42 +226,6 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     emit PoolChanged(_pid, _apy, _lockPeriodInDays, _endDate, _hardCap, _maxTransfer);
   }
 
-  /**
-   *
-   * @dev Set NFT boost info
-   *
-   * @param _pid  pool id
-   * @param _name  name of the nft
-   * @param _contractAdd  address of the nft contract
-   * @param _isUsed  is nft used
-   * @param _multiplier  multiplier value
-   * @param _startIdx  start index of nft
-   * @param _endIdx  end index of nft
-   */
-  function setNFT(
-    uint256 _pid,
-    string calldata _name,
-    address _contractAdd,
-    bool _isUsed,
-    uint16 _multiplier,
-    uint16 _startIdx,
-    uint16 _endIdx
-  ) external override onlyManager {
-    require(_multiplier >= 10, "Invalid multi");
-    require(_startIdx <= _endIdx, "Invalid index");
-
-    NFTMultiplier storage nft = nftInfo[_pid];
-    nft.name = _name;
-    if (nft.contractAdd == address(0)) {
-      nft.contractAdd = _contractAdd;
-    }
-    nft.active = _isUsed;
-    nft.multiplier = _multiplier;
-    nft.startIdx = _startIdx;
-    nft.endIdx = _endIdx;
-
-    emit NFTSet(_pid, _name, _contractAdd, _isUsed, _multiplier, _startIdx, _endIdx);
-  }
 
   /**
    *
@@ -314,35 +250,6 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
 
   /**
    *
-   * @dev Handle NFT boost of users from compounder
-   *
-   * @param _pid id of the pool
-   * @param _user user eligible for NFT boost
-   * @param _rewardAmount Amount of rewards generated
-   *
-   * @return uint256 Status of stake
-   *
-   */
-  function handleNFTMultiplier(
-    uint256 _pid,
-    address _user,
-    uint256 _rewardAmount
-  ) external override returns (uint256) {
-    require(msg.sender == compounderContract, "Only compounder");
-    uint16 multi = calcMultiplier(_pid, _user);
-
-    uint256 multipliedAmount = ((_rewardAmount * multi) / 10) - _rewardAmount;
-
-    if (multipliedAmount > 0) {
-      _checkEnoughRewards(_pid, multipliedAmount);
-      SafeERC20.safeTransfer(IERC20(poolInfo[_pid].rewardsToken), _user, multipliedAmount);
-    }
-
-    return multipliedAmount;
-  }
-
-  /**
-   *
    * @dev claim accumulated TOKEN reward for a single pool
    *
    * @param _pid pool identifier
@@ -355,42 +262,6 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     //require(canClaim(_pid, msg.sender), "Reward still locked");
 
     _claim(_pid, msg.sender);
-
-    return true;
-  }
-
-  /**
-   *
-   * @dev Reinvest accumulated TOKEN reward for a single pool
-   *
-   * @param _pid pool identifier
-   *
-   * @return bool status of reinvest
-   */
-
-  function reinvest(uint256 _pid) public override returns (bool) {
-    uint256 amount = payout(_pid, msg.sender);
-    if (amount > 0) {
-      _checkEnoughRewards(_pid, amount);
-      _stake(_pid, msg.sender, amount, true);
-      emit Reinvest(msg.sender, _pid, amount, block.timestamp);
-    }
-
-    return true;
-  }
-
-  /**
-   *
-   * @dev Reinvest accumulated TOKEN reward for all pools
-   *
-   * @return bool status of reinvest
-   */
-
-  function reinvestAll() external override returns (bool) {
-    uint256 len = poolInfo.length;
-    for (uint256 pid = 0; pid < len; ++pid) {
-      reinvest(pid);
-    }
 
     return true;
   }
@@ -461,50 +332,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     User storage user = users[_pid][_addr];
     Pool storage pool = poolInfo[_pid];
 
-    if (msg.sender == compounderContract) {
-      return true;
-    }
-
     return (block.timestamp >= user.depositTime + (pool.lockPeriodInDays * 1 days));
-  }
-
-  /**
-   *
-   * @dev check whether user have NFT multiplier
-   *
-   * @param _pid  id of the pool
-   * @param _addr address of the user
-   *
-   * @return multi Value of multiplier
-   *
-   */
-
-  function calcMultiplier(uint256 _pid, address _addr) public view override returns (uint16 multi) {
-    NFTMultiplier memory nft = nftInfo[_pid];
-
-    if (nft.active && ownsCorrectNFT(_addr, _pid) && _addr != compounderContract) {
-      multi = nft.multiplier;
-    } else {
-      multi = 10;
-    }
-  }
-
-  /**
-   * @dev Check if user owns correct NFT
-   *
-   * @param _addr  address of the user
-   * @param _pid  id of the pool
-   */
-  function ownsCorrectNFT(address _addr, uint256 _pid) public view returns (bool) {
-    NFTMultiplier memory nft = nftInfo[_pid];
-
-    uint256[] memory ids = walletOfOwner(nft.contractAdd, _addr);
-    for (uint256 i = 0; i < ids.length; i++) {
-      if (ids[i] >= nft.startIdx && ids[i] <= nft.endIdx) {
-        return true;
-      }
-    }
-    return false;
   }
 
   /**
@@ -522,15 +350,12 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
         uint256 from = user.lastPayout > user.depositTime ? user.lastPayout : user.depositTime;
         uint256 to = Math.min(block.timestamp, pool.endDate);
 
-        uint256 multiplier = calcMultiplier(_pid, _addr);
 
         if (from < to) {
             // Use the new calculateRawYield function
             // Note: pool.apy is assumed to be in basis points (e.g., 1000 for 10% APY)
             value = calculateRawYield(userIMO, pool.apy * 100, from, to);
         }
-
-        value = Math.mulDiv(value, multiplier, 10);
 
         return value;
     }
@@ -558,29 +383,6 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
   }
 
   
-
-
-  /**
-   * @dev Token transfer function
-   *
-   * @param _token  token address
-   * @param _to  address of the receiver
-   * @param _amount  amount to be transferred
-   */
-  function safeTOKENTransfer(address _token, address _to, uint256 _amount) internal {
-    IERC20 token = IERC20(_token);
-    uint256 maxTx = maxTransferAmount[_token];
-    uint256 amount = _amount;
-
-    while (amount > maxTx) {
-      token.safeTransfer(_to, maxTx);
-      amount = amount - maxTx;
-    }
-
-    if (amount > 0) {
-      token.safeTransfer(_to, amount);
-    }
-  }
 
   /**
    * @dev Internal claim function
@@ -631,13 +433,12 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     User storage user = users[_pid][_sender];
     Pool storage pool = poolInfo[_pid];
 
-    if (!_isReinvest || _sender != compounderContract) {
+    if (!_isReinvest) {
       user.depositTime = block.timestamp;
-      if (_sender != compounderContract) {
-        require(pool.totalDeposit + _amount <= pool.hardCap, "Pool full");
-        uint256 stopDepo = pool.endDate - (pool.lockPeriodInDays * 1 days);
-        require(block.timestamp <= stopDepo, "Staking disabled for this pool");
-      }
+      require(pool.totalDeposit + _amount <= pool.hardCap, "Pool full");
+      uint256 stopDepo = pool.endDate - (pool.lockPeriodInDays * 1 days);
+      require(block.timestamp <= stopDepo, "Staking disabled for this pool");
+      
     }
 
     user.totalInvested = user.totalInvested + _amount;
@@ -645,26 +446,6 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     user.lastPayout = block.timestamp;
 
     emit Stake(_sender, _pid, _amount, block.timestamp);
-  }
-
-  /**
-   * @dev Get NFTs of owner
-   *
-   * @param _contract  address of the nft contract
-   * @param _owner  address of the owner
-   */
-  function walletOfOwner(
-    address _contract,
-    address _owner
-  ) internal view returns (uint256[] memory) {
-    IERC721Enumerable nft = IERC721Enumerable(_contract);
-    uint256 tokenCount = nft.balanceOf(_owner);
-
-    uint256[] memory tokensId = new uint256[](tokenCount);
-    for (uint256 i; i < tokenCount; i++) {
-      tokensId[i] = nft.tokenOfOwnerByIndex(_owner, i);
-    }
-    return tokensId;
   }
 
   function _checkEnoughRewards(uint256 _pid, uint256 _amount) internal view {
