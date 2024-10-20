@@ -572,4 +572,42 @@ contract DCBVaultTest is Test {
     }
 
 
+    function testNoRewardsAfterEndDate(uint256 stakeAmount) public {
+        vm.assume(stakeAmount > fuzzerLowBound);
+        vm.assume(stakeAmount < hardcap);
+        deal(address(stakeToken), user1, stakeAmount);
+        
+        uint256 poolID = 0;
+        
+        // Get the pool end time
+        (, , , , uint256 endTime, , , ) = masterChef.poolInfo(poolID);
+        
+        vm.startPrank(user1, user1);
+        stakeToken.approve(address(vault), stakeAmount);
+        vault.deposit(poolID, stakeAmount);
+        vm.stopPrank();
+
+        // Warp time to just before the end time
+        vm.warp(endTime);
+
+        // Harvest rewards just before end time
+        vm.prank(user1, user1);
+        vault.harvest(poolID);
+        uint256 rewardsAfterEnd = rewardsToken.balanceOf(user1);
+
+        // Check that no additional rewards were produced after the end time
+        assertGt(rewardsAfterEnd, 0, "No additional rewards should be produced after end time");
+
+        // Try to harvest again to ensure no rewards are accumulated
+        vm.warp(endTime + 40 days);
+        vm.prank(user1, user1);
+        vault.harvest(poolID);
+        uint256 rewardsAfterHarvest = rewardsToken.balanceOf(user1);
+        uint256 rewardsDiff = rewardsAfterHarvest - rewardsAfterEnd;
+
+        assertEq(rewardsDiff, 0, "No rewards should be produced after end time");
+}
+
+
+
 }
