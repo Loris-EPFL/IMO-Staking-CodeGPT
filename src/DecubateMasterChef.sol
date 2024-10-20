@@ -54,7 +54,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
   //address public compounderContract; //Auto compounder
   address private feeAddress; //Address which receives fee
   uint8 private feePercent; //Percentage of fee deducted (/1000)
-  uint256 BPTscaling = 125; //Scaling factor for BPT tokens pool weight
+  uint256 BPTscaling = 120; //Scaling factor for BPT tokens pool weight
 
 
   // User data

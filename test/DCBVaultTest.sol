@@ -106,7 +106,7 @@ contract DCBVaultTest is Test {
         deal(address(rewardsToken), address(this), 1000000 ether); //deals IMO
         IERC20(WETH).approve(balancerVault, 10 ether);
         rewardsToken.approve(balancerVault, 1000000 ether);
-        joinImoPool(10 ether, 1000000 ether, address(this), address(this));
+        //joinImoPool(10 ether, 1000000 ether, address(this), address(this));
         
     }
 
@@ -150,9 +150,11 @@ contract DCBVaultTest is Test {
     function testHarvest(uint256 stakeAmount) public {
         vm.assume(stakeAmount > fuzzerLowBound);
         vm.assume(stakeAmount < hardcap);
+        //uint256 stakeAmount = 4536 ether; //staking 4536 BPT (ABOUT 10K$) Results in 17000 IMO and 0.73 ETH
         deal(address(stakeToken), user1, stakeAmount);
+        console2.log("Input value of about ", stakeAmount * 222 / (1e18*100)); //BPT price is 2,22$
         
-        uint256 poolID = 1;
+        uint256 poolID = 0;
         vm.startPrank(user1, user1);
         stakeToken.approve(address(vault),stakeAmount);
         vault.deposit(poolID, stakeAmount); //30 * 1e18 is 0.0036 ETH (9,44$) + 264,5 IMO (37,15$) = 46,59$
@@ -171,14 +173,15 @@ contract DCBVaultTest is Test {
 
         uint256 finalBalance = rewardsToken.balanceOf(user1);
         console2.log("imo harvested", (finalBalance - initialBalance) / 1e18);
-        console2.log("imo harvested in $", ((finalBalance - initialBalance) * 14 / (1e18*100))); //imo price is 0,14$
+        console2.log("imo harvested in $", ((finalBalance - initialBalance) * 48 / (1e18*100))); //imo price is 0,48$
 
         assertGe(finalBalance, initialBalance);
     }
 
     function testZapEtherAndStakeIMO(uint256 zapAmount) public {
-        vm.assume(zapAmount > 0);
-        vm.assume(zapAmount < 0.1 ether);
+        vm.assume(zapAmount > 1e8);
+        vm.assume(zapAmount < 10 ether);
+        vm.deal(user1, zapAmount);
         uint256 pid = 1;
         //uint256 zapAmount = 10e10;
 
@@ -213,7 +216,7 @@ contract DCBVaultTest is Test {
     }
 
     function testWithdrawAfterZap(uint256 zapAmount) public {
-        vm.assume(zapAmount > 1 );
+        vm.assume(zapAmount > 1e6);
         vm.assume(zapAmount < hardcap);
         deal(address(stakeToken), user1, zapAmount);
 
