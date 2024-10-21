@@ -10,7 +10,7 @@ import { IDecubateMasterChef } from "./interfaces/IDecubateMasterChef.sol";
 import {ABalancer} from "./balancer/zapper/ABalancer.sol";
 import {Ownable} from "@openzeppelin/access/Ownable.sol";
 import {IWETH} from "./balancer/interfaces/IWETH.sol";
-
+import {IstIMO} from "./interfaces/IstIMO.sol";
 /**
  * @title DCBVault
  * @dev Vault contract for managing user deposits, staking, and rewards distribution
@@ -48,7 +48,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
 
   uint256 public callFee; // Fee to call harvestAll function
   uint256 internal constant DIVISOR = 10000;
-  uint8 balancerPoolWeight = 75;
+  uint8 balancerPoolWeight = 80;
 
   // User staking info
   mapping(uint256 => mapping(address => UserInfo)) public users;
@@ -61,6 +61,9 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
   mapping(uint256 => Rebate) public rebates;
   // Deposit fee info
   Fee public fee;
+
+  //Staked IMO token for DAO
+  IstIMO public stakedIMO;
 
   bytes32 internal constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
 
@@ -210,6 +213,8 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
 
         _earn(_pid);
 
+        stakedIMO.mint(msg.sender, stakedAmount); //Mint same amount of stIMO for DAO
+
         emit Deposit(msg.sender, _pid, stakedAmount, block.timestamp);
         return(stakedAmount);
             
@@ -268,6 +273,8 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     pool.pendingClaim += _amount;
 
     _earn(_pid);
+
+    stakedIMO.mint(msg.sender, _amount); //Mint same amount of stIMO for DAO
 
     emit Deposit(msg.sender, _pid, _amount, block.timestamp);
   }
@@ -427,6 +434,8 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
 
     token.safeTransfer(msg.sender, currentAmount);
 
+    stakedIMO.burn(msg.sender, currentAmount);
+
     emit Withdraw(msg.sender, _pid, currentAmount, block.timestamp);
   }
 
@@ -530,5 +539,10 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
   function getRewardTokenOfPool(uint256 _pid) internal view returns (IERC20) {
     (, , , , , , , address rewardToken) = masterchef.poolInfo(_pid);
     return IERC20(rewardToken);
+  }
+
+  //setter for stIMO (for DAO purposes), only callable by owner
+  function updateStakedIMO(address _stakedIMO) external onlyOwner() {
+    stakedIMO = IstIMO(_stakedIMO);
   }
 }

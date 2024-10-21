@@ -51,7 +51,6 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
 
   }
 
-  //address public compounderContract; //Auto compounder
   address private feeAddress; //Address which receives fee
   uint8 private feePercent; //Percentage of fee deducted (/1000)
   uint256 BPTscaling = 120; //Scaling factor for BPT tokens pool weight
@@ -64,8 +63,6 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
 
   // Pool info
   Pool[] public poolInfo;
-  // NFT info
-  //NFTMultiplier[] public nftInfo;
 
   bytes32 internal constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
 

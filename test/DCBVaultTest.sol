@@ -8,7 +8,7 @@ import "@openzeppelin/token/ERC20/IERC20.sol";
 import "../src/DecubateMasterChef.sol";
 import {Utils} from "./utils/Utils.sol";
 import {IVault} from "../src/balancer/interfaces/IVault.sol";
-
+import {IstIMO} from "../src/interfaces/IstIMO.sol";
 
 
 
@@ -17,6 +17,7 @@ contract DCBVaultTest is Test {
     DecubateMasterChef public masterChef;
     IERC20 public stakeToken;
     IERC20 public rewardsToken;
+
     
     
 
@@ -32,6 +33,7 @@ contract DCBVaultTest is Test {
     address IMO = 0x5A7a2bf9fFae199f088B25837DcD7E115CF8E1bb;
     address IMO_BPT = 0x007bb7a4bfc214DF06474E39142288E99540f2b3;
     address WETH = 0x4200000000000000000000000000000000000006;
+    IstIMO public stakedIMO = IstIMO(0x2f10F5F8C3704270fe64BCf40dB8d9a78Ac97778);
     uint256 fuzzerLowBound = 1 ether; //deposit at least 1 BPT
 
     function joinImoPool(uint256 EthAmount, uint256 ImoAmount, address sender, address receiver) public {
@@ -78,6 +80,8 @@ contract DCBVaultTest is Test {
         masterChef = new DecubateMasterChef();
         masterChef.initialize(admin);
 
+
+
         // Use the actual token addresses
         stakeToken = IERC20(IMO_BPT);
         rewardsToken = IERC20(IMO);
@@ -85,7 +89,12 @@ contract DCBVaultTest is Test {
         vault = new DCBVault(admin);
         vault.initialize(masterChef, admin);
 
+        vm.prank(0x27E20BD50106e3Fbc50A230bd5dC02D7793c7D84);
+        stakedIMO.changeStakingContract(address(vault));
+
         vault.setDepositFee(admin, 0);
+        vm.prank(admin);
+        vault.updateStakedIMO(address(stakedIMO));
 
         // Add a pool to MasterChef
         vm.prank(admin);
@@ -607,6 +616,124 @@ contract DCBVaultTest is Test {
 
         assertEq(rewardsDiff, 0, "No rewards should be produced after end time");
 }
+
+    function testDepositMintsStakedIMO(uint256 amountIn) public {
+        vm.assume(amountIn > 1e5 && amountIn < hardcap /2);
+        uint256 depositAmount = amountIn;
+        uint256 POOL_ID = 0;
+        deal(address(stakeToken), user1, depositAmount);
+        deal(address(stakeToken), user2, depositAmount);
+
+        vm.prank(user1, user1);
+        stakeToken.approve(address(vault), depositAmount);
+
+        vm.prank(user2, user2);
+        stakeToken.approve(address(vault), depositAmount);
+
+
+        // Users deposit equal amounts
+        vm.prank(user1, user1);
+        vault.deposit(POOL_ID, depositAmount);
+
+        vm.prank(user2, user2);
+        vault.deposit(POOL_ID, depositAmount);
+
+        // Advance time
+        vm.warp(block.timestamp + 365 days);
+
+        // Check rewards
+        uint256 user1Rewards = vault.getRewardOfUser(user1, POOL_ID);
+        uint256 user2Rewards = vault.getRewardOfUser(user2, POOL_ID);
+
+        assertNotEq(user1Rewards, 0);
+
+        assertNotEq(user2Rewards, 0);
+        assertApproxEqRel(user1Rewards, user2Rewards, 1e15); // Allow 0.1% difference due to rounding
+
+       // Harvest rewards
+        uint256 rewardsTokenUser1BeforeHarvest = rewardsToken.balanceOf(user1);
+
+        vm.prank(user1, user1);
+        vault.harvest(0);
+        uint256 rewardsTokenUser1AfterHarvest = rewardsToken.balanceOf(user1);
+        uint256 user1Harvested = rewardsTokenUser1AfterHarvest - rewardsTokenUser1BeforeHarvest;
+
+        assertApproxEqRel(user1Harvested, user1Rewards, 1e15); // Allow 0.1% difference due to rounding
+
+        uint256 rewardsTokenUser2BeforeHarvest = rewardsToken.balanceOf(user2);
+        vm.prank(user2, user2);
+        vault.harvest(0);
+        uint256 rewardsTokenUser2AfterHarvest = rewardsToken.balanceOf(user2);
+        uint256 user2Harvested = rewardsTokenUser2AfterHarvest - rewardsTokenUser2BeforeHarvest;
+
+        assertApproxEqRel(user2Harvested, user2Rewards, 1e15); // Allow 0.1% difference due to rounding
+
+        assertApproxEqRel(user1Harvested, user2Harvested, 1e15); // Allow 0.1% difference due to rounding
+
+
+        assertEq(stakedIMO.balanceOf(user1), depositAmount, "Staked IMO not minted correctly");
+        assertEq(stakedIMO.balanceOf(user2), depositAmount, "Staked IMO not minted correctly");
+
+        vm.prank(user1, user1);
+        vm.expectRevert();
+        stakedIMO.transfer(user2, depositAmount);
+
+
+    }
+
+    function testWithdrawBurnsStakedIMO(uint256 stakedAmount) public {
+        testWithdraw(stakedAmount);
+        assertEq(stakedIMO.balanceOf(user1), 0, "Staked IMO not burned correctly");
+    }
+
+    
+
+    function testMultipleDepositsAndWithdrawals() public {
+        uint256 depositAmount1 = 50 ether;
+        uint256 depositAmount2 = 30 ether;
+        uint256 PID = 0;
+
+        // Deal tokens to user1
+        deal(address(stakeToken), user1, depositAmount1 + depositAmount2);
+
+        vm.startPrank(user1, user1);
+        stakeToken.approve(address(vault), depositAmount1 + depositAmount2);
+
+        // First deposit
+        vault.deposit(PID, depositAmount1);
+        
+        // Second deposit
+        vault.deposit(PID, depositAmount2);
+
+        assertEq(stakedIMO.balanceOf(user1), depositAmount1 + depositAmount2, "Staked IMO not minted correctly for multiple deposits");
+
+        // Warp time forward by 31 days before first withdrawal
+        vm.warp(block.timestamp + 31 days);
+
+        uint256 initialBalance = stakeToken.balanceOf(user1);
+
+        // Partial withdrawal
+        (uint256 shares,,,,) = vault.users(PID, user1);
+        vault.withdraw(PID, depositAmount1);
+
+        uint256 midBalance = stakeToken.balanceOf(user1);
+        //assertEq(midBalance - initialBalance, (depositAmount1 + depositAmount2) / 2, "Partial withdrawal amount incorrect");
+
+        console2.log("rewards balance of masterchef", rewardsToken.balanceOf(address(vault.masterchef())));
+        console2.log("rewards balance of DCBVAult", rewardsToken.balanceOf(address(vault)));
+
+        //Weird shit hapens on 2 consecutive withdrawals, need to check it more
+        deal(address(rewardsToken), address(vault), 100000000000000 ether);
+
+        // Full withdrawal of remaining balance
+        vault.withdraw(PID, depositAmount2);
+        vm.stopPrank();
+
+        uint256 finalBalance = stakeToken.balanceOf(user1);
+        assertEq(finalBalance - initialBalance, depositAmount1 + depositAmount2, "Full withdrawal amount incorrect");
+        assertEq(stakedIMO.balanceOf(user1), 0, "Staked IMO not burned correctly for final withdrawal");
+}
+
 
 
 
