@@ -19,7 +19,11 @@ contract DCBVaultTest is Test {
     IERC20 public rewardsToken;
 
     
-    
+    struct PoolInfo {
+    uint256 totalShares; // Total shares in the pool
+    uint256 pendingClaim; // Claim stored when pool is full
+    uint256 lastHarvestedTime; // keeps track of the last pool update
+  }
 
     address public admin;
     address public masterChefAddress;
@@ -724,6 +728,16 @@ contract DCBVaultTest is Test {
 
         //Weird shit hapens on 2 consecutive withdrawals, need to check it more
         deal(address(rewardsToken), address(vault), 100000000000000 ether);
+
+        (uint256 totalShares, , ) = vault.pools(PID);
+        (uint256 userShares, ,, , ) = vault.users(PID, user1);
+
+        console2.log("pool total shares", totalShares);
+        console2.log("user total shares", userShares);
+        /*
+        uint256 accumulatedRewards = vault.accumulatedRewardsPerShare(PID);
+        console2.log("accumulatedRewards", accumulatedRewards);
+        */
 
         // Full withdrawal of remaining balance
         vault.withdraw(PID, depositAmount2);

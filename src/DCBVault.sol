@@ -457,17 +457,25 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
     uint256 claimed = token.balanceOf(address(this)) - prevBal;
     
     uint256 currentCallFee = (claimed * callFee) / DIVISOR;
+
     claimed -= currentCallFee;
     // Update accumulated rewards per share
-    accumulatedRewardsPerShare[_pid] += (claimed * 1e12) / pool.totalShares;
+    accumulatedRewardsPerShare[_pid] = accumulatedRewardsPerShare[_pid] + ((claimed * 1e12) / pool.totalShares);
+    
     
     // Calculate the user's share of rewards
-    uint256 pending = (user.shares * accumulatedRewardsPerShare[_pid]) / 1e12 - user.rewardsDebt;
-    
-    if (pending > 0) {
-        SafeERC20.safeTransfer(token, msg.sender, pending);
-        user.totalClaimed += pending;
+    if ((user.shares * accumulatedRewardsPerShare[_pid]) / 1e12 > user.rewardsDebt){
+        uint256 pending = (user.shares * accumulatedRewardsPerShare[_pid]) / 1e12 - user.rewardsDebt; //This line reverts
+         if (pending > 0) {
+              SafeERC20.safeTransfer(token, msg.sender, pending);
+              user.totalClaimed += pending;
+        }
     }
+    
+
+
+    
+   
     
     // Update user's rewards debt
     user.rewardsDebt = (user.shares * accumulatedRewardsPerShare[_pid]) / 1e12;
