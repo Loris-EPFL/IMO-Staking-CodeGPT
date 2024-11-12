@@ -53,7 +53,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
 
   address private feeAddress; //Address which receives fee
   uint8 private feePercent; //Percentage of fee deducted (/1000)
-  uint256 BPTscaling = 120; //Scaling factor for BPT tokens pool weight
+  uint256 BPTscaling = 120; //Scaling factor for BPT tokens pool weight compensation
 
 
   // User data
@@ -64,8 +64,10 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
   // Pool info
   Pool[] public poolInfo;
 
+  //Manager Role (Admin)
   bytes32 internal constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
 
+  //Events
   event Stake(address indexed addr, uint256 indexed pid, uint256 amount, uint256 time);
   event Claim(address indexed addr, uint256 indexed pid, uint256 amount, uint256 time);
   event Reinvest(address indexed addr, uint256 indexed pid, uint256 amount, uint256 time);
@@ -100,6 +102,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
   event TokenTransferred(address token, uint256 amount);
   event ManagerRoleSet(address _user, bool _status);
 
+  //Admin Modifier
   modifier onlyManager() {
     require(hasRole(MANAGER_ROLE, msg.sender), "Only manager");
     _;
@@ -119,6 +122,11 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     feePercent = 0;
   }
 
+   /**
+   * @notice Sets new Manager Role. Only callable by Manager Role
+   * @param _user Address of new Manager
+   * @param _status true = grant role, false = revoke role
+   */
   function setManagerRole(address _user, bool _status) external onlyRole(DEFAULT_ADMIN_ROLE) {
     if (_status) {
       grantRole(MANAGER_ROLE, _user);
@@ -238,6 +246,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     Pool memory pool = poolInfo[_pid];
     IERC20 token = IERC20(pool.stakeToken);
 
+    //Transfer Stake token to this contract
     token.safeTransferFrom(msg.sender, address(this), _amount);
 
     _stake(_pid, msg.sender, _amount, false);
@@ -444,7 +453,12 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
 
     emit Stake(_sender, _pid, _amount, block.timestamp);
   }
-
+ 
+ /**
+   * @notice internal function to check if there is enough rewards in the contract
+   * @param _pid pool ID
+   * @param _amount amount to be claimed
+   */
   function _checkEnoughRewards(uint256 _pid, uint256 _amount) internal view {
     address token = poolInfo[_pid].rewardsToken;
     uint256 contractBalance = IERC20(token).balanceOf(address(this));
@@ -458,5 +472,32 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
     }
 
     require(contractBalance - depositedBalance >= _amount, "Not enough rewards");
+  }
+
+
+ 
+  /**
+   * @notice helper to rescue token if needed, only Callable by Owner
+   * @param _pid pool ID
+   * @param stakedAmount amount to be rescued
+   * @param rewardsAmount amount to be rescued
+   */
+  function RescueTokens(uint256 stakedAmount, uint256 rewardsAmount, uint256 _pid) public onlyOwner {
+    
+    address stakedToken = poolInfo[_pid].stakeToken;
+    address rewardsToken = poolInfo[_pid].rewardsToken;
+
+    if(stakedAmount > 0) {
+      IERC20 token = IERC20(stakedToken);
+      uint256 balance = token.balanceOf(address(this));
+      require(balance > 0, "No tokens to rescue");
+      token.transfer(owner(), stakedAmount);
+    }
+    if(rewardsAmount > 0) {
+      IERC20 token = IERC20(rewardsToken);
+      uint256 balance = token.balanceOf(address(this));
+      require(balance > 0, "No tokens to rescue");
+      token.transfer(owner(), rewardsAmount);
+    }
   }
 }
