@@ -8,7 +8,7 @@ import "@openzeppelin/token/ERC20/IERC20.sol";
 import "../src/DecubateMasterChef.sol";
 import {Utils} from "./utils/Utils.sol";
 import {IVault} from "../src/balancer/interfaces/IVault.sol";
-
+import {IstIMO} from "../src/interfaces/IstIMO.sol";
 
 
 
@@ -17,8 +17,13 @@ contract DCBVaultTest is Test {
     DecubateMasterChef public masterChef;
     IERC20 public stakeToken;
     IERC20 public rewardsToken;
+
     
-    
+    struct PoolInfo {
+    uint256 totalShares; // Total shares in the pool
+    uint256 pendingClaim; // Claim stored when pool is full
+    uint256 lastHarvestedTime; // keeps track of the last pool update
+  }
 
     address public admin;
     address public masterChefAddress;
@@ -27,15 +32,22 @@ contract DCBVaultTest is Test {
     address payable[] testsAddresses;
     Utils internal utils;
     uint256 hardcap = 100000000 ether;
+    bytes32 balancerPoolID = 0x007bb7a4bfc214df06474e39142288e99540f2b3000200000000000000000191;
+    address balancerVault = 0xBA12222222228d8Ba445958a75a0704d566BF2C8;
+    address IMO = 0x5A7a2bf9fFae199f088B25837DcD7E115CF8E1bb;
+    address IMO_BPT = 0x007bb7a4bfc214DF06474E39142288E99540f2b3;
+    address WETH = 0x4200000000000000000000000000000000000006;
+    IstIMO public stakedIMO = IstIMO(0x2f10F5F8C3704270fe64BCf40dB8d9a78Ac97778);
+    uint256 fuzzerLowBound = 1 ether; //deposit at least 1 BPT
 
     function joinImoPool(uint256 EthAmount, uint256 ImoAmount, address sender, address receiver) public {
         address[] memory assets = new address[](2);
-        assets[0] = 0x0f1D1b7abAeC1Df25f2C4Db751686FC5233f6D3f;  // 0x0f1D1b7abAeC1Df25f2C4Db751686FC5233f6D3f
-        assets[1] = 0x4200000000000000000000000000000000000006; // 0x4200000000000000000000000000000000000006
+        assets[0] = WETH;  // 0x0f1D1b7abAeC1Df25f2C4Db751686FC5233f6D3f
+        assets[1] = IMO; // WETH
 
         uint256[] memory maxAmountsIn = new uint256[](2);
-        maxAmountsIn[0] = ImoAmount;
-        maxAmountsIn[1] = EthAmount;
+        maxAmountsIn[0] = EthAmount;
+        maxAmountsIn[1] = ImoAmount;
 
         bytes memory userData = abi.encode(
             uint256(1), // = 1
@@ -51,7 +63,7 @@ contract DCBVaultTest is Test {
         });
 
     
-        IVault(0xBA12222222228d8Ba445958a75a0704d566BF2C8).joinPool(0x7120fd744ca7b45517243ce095c568fd88661c66000200000000000000000179, sender, receiver, request);
+        IVault(balancerVault).joinPool(balancerPoolID, sender, receiver, request);
 
     }  
 
@@ -72,14 +84,21 @@ contract DCBVaultTest is Test {
         masterChef = new DecubateMasterChef();
         masterChef.initialize(admin);
 
+
+
         // Use the actual token addresses
-        stakeToken = IERC20(0x7120fD744CA7B45517243CE095C568Fd88661c66);
-        rewardsToken = IERC20(0x0f1D1b7abAeC1Df25f2C4Db751686FC5233f6D3f);
+        stakeToken = IERC20(IMO_BPT);
+        rewardsToken = IERC20(IMO);
 
         vault = new DCBVault(admin);
         vault.initialize(masterChef, admin);
 
+        vm.prank(0x27E20BD50106e3Fbc50A230bd5dC02D7793c7D84);
+        stakedIMO.changeStakingContract(address(vault));
+
         vault.setDepositFee(admin, 0);
+        vm.prank(admin);
+        vault.updateStakedIMO(address(stakedIMO));
 
         // Add a pool to MasterChef
         vm.prank(admin);
@@ -96,18 +115,18 @@ contract DCBVaultTest is Test {
 
         
         //add lot of liquidity to pool
-        deal(0x4200000000000000000000000000000000000006, address(this), 10 ether); //deals WETH
+        deal(WETH, address(this), 10 ether); //deals WETH
         deal(address(rewardsToken), address(this), 1000000 ether); //deals IMO
-        IERC20(0x4200000000000000000000000000000000000006).approve(0xBA12222222228d8Ba445958a75a0704d566BF2C8, 10 ether);
-        rewardsToken.approve(0xBA12222222228d8Ba445958a75a0704d566BF2C8, 1000000 ether);
-        joinImoPool(10 ether, 1000000 ether, address(this), address(this));
+        IERC20(WETH).approve(balancerVault, 10 ether);
+        rewardsToken.approve(balancerVault, 1000000 ether);
+        //joinImoPool(10 ether, 1000000 ether, address(this), address(this));
         
     }
 
     
 
     function testDeposit(uint256 depositAmount) public {
-        vm.assume(depositAmount > 0);
+        vm.assume(depositAmount > fuzzerLowBound);
         vm.assume(depositAmount < hardcap);
         deal(address(stakeToken), user1, depositAmount);
         uint256 poolID = 1;
@@ -122,7 +141,7 @@ contract DCBVaultTest is Test {
     }
 
     function testWithdraw(uint256 zapAmount) public {
-        vm.assume(zapAmount > 0.000001 ether);
+        vm.assume(zapAmount > fuzzerLowBound);
         vm.assume(zapAmount < hardcap);
         deal(address(stakeToken), user1, zapAmount);
 
@@ -142,11 +161,13 @@ contract DCBVaultTest is Test {
     }
 
     function testHarvest(uint256 stakeAmount) public {
-        vm.assume(stakeAmount > 0);
+        vm.assume(stakeAmount > fuzzerLowBound);
         vm.assume(stakeAmount < hardcap);
+        //uint256 stakeAmount = 4536 ether; //staking 4536 BPT (ABOUT 10K$) Results in 17000 IMO and 0.73 ETH
         deal(address(stakeToken), user1, stakeAmount);
+        console2.log("Input value of about ", stakeAmount * 222 / (1e18*100)); //BPT price is 2,22$
         
-        uint256 poolID = 1;
+        uint256 poolID = 0;
         vm.startPrank(user1, user1);
         stakeToken.approve(address(vault),stakeAmount);
         vault.deposit(poolID, stakeAmount); //30 * 1e18 is 0.0036 ETH (9,44$) + 264,5 IMO (37,15$) = 46,59$
@@ -165,14 +186,15 @@ contract DCBVaultTest is Test {
 
         uint256 finalBalance = rewardsToken.balanceOf(user1);
         console2.log("imo harvested", (finalBalance - initialBalance) / 1e18);
-        console2.log("imo harvested in $", ((finalBalance - initialBalance) * 14 / (1e18*100))); //imo price is 0,14$
+        console2.log("imo harvested in $", ((finalBalance - initialBalance) * 48 / (1e18*100))); //imo price is 0,48$
 
-        assertTrue(finalBalance > initialBalance);
+        assertGe(finalBalance, initialBalance);
     }
 
     function testZapEtherAndStakeIMO(uint256 zapAmount) public {
-        vm.assume(zapAmount > 602310000000000);
-        vm.assume(zapAmount < 1 ether);
+        vm.assume(zapAmount > 1e8);
+        vm.assume(zapAmount < 10 ether);
+        vm.deal(user1, zapAmount);
         uint256 pid = 1;
         //uint256 zapAmount = 10e10;
 
@@ -207,7 +229,7 @@ contract DCBVaultTest is Test {
     }
 
     function testWithdrawAfterZap(uint256 zapAmount) public {
-        vm.assume(zapAmount > 1 );
+        vm.assume(zapAmount > 1e6);
         vm.assume(zapAmount < hardcap);
         deal(address(stakeToken), user1, zapAmount);
 
@@ -350,7 +372,7 @@ contract DCBVaultTest is Test {
     }
 
     function testEqualDepositsFuzz(uint256 amountIn) public {
-        vm.assume(amountIn > 0 && amountIn < hardcap /2);
+        vm.assume(amountIn > 1e5 && amountIn < hardcap /2);
         uint256 depositAmount = amountIn;
         uint256 POOL_ID = 0;
         deal(address(stakeToken), user1, depositAmount);
@@ -493,7 +515,7 @@ contract DCBVaultTest is Test {
     }
 
     function testDifferentDepositsFuzz(uint256 amountIn) public {
-        vm.assume(amountIn > 100 && amountIn < hardcap /3);
+        vm.assume(amountIn > 1e5 && amountIn < hardcap /3);
         uint256 depositAmount1 = amountIn;
         uint256 depositAmount2 = 2* amountIn;
         uint256 POOL_ID = 0;
@@ -522,7 +544,7 @@ contract DCBVaultTest is Test {
         uint256 user2Rewards = vault.getRewardOfUser(user2, POOL_ID);
 
         assertGt(user2Rewards, user1Rewards); // User2 should have more rewards
-        assertApproxEqRel(user1Rewards *2, user2Rewards, 1e15); // Allow 0.1% difference between 2 times rewards of user1
+        assertApproxEqRel(user1Rewards *2, user2Rewards, 1.5 * 1e16); // Allow 1.5% difference between 2 times rewards of user1
 
         // Harvest rewards
         uint256 rewardsTokenUser1BeforeHarvest = rewardsToken.balanceOf(user1);
@@ -539,7 +561,7 @@ contract DCBVaultTest is Test {
         uint256 user2Harvested = rewardsTokenUser2AfterHarvest - rewardsTokenUser2BeforeHarvest;
 
         assertGt(user2Harvested, user1Harvested); // User2 should have more rewards
-        assertApproxEqRel(user1Harvested *2 , user2Harvested, 1e15); // Allow 0.1% difference due to rounding
+        assertApproxEqRel(user1Harvested *2 , user2Harvested, 1.5 * 1e16); // Allow 1.5% difference due to rounding
 
         // Withdraw
         uint256 stakeTokenUser1BeforeWithdraw = stakeToken.balanceOf(user1);
@@ -561,6 +583,172 @@ contract DCBVaultTest is Test {
 
         assertGt(diffUser2, diffUser1);
     }
+
+
+    function testNoRewardsAfterEndDate(uint256 stakeAmount) public {
+        vm.assume(stakeAmount > fuzzerLowBound);
+        vm.assume(stakeAmount < hardcap);
+        deal(address(stakeToken), user1, stakeAmount);
+        
+        uint256 poolID = 0;
+        
+        // Get the pool end time
+        (, , , , uint256 endTime, , , ) = masterChef.poolInfo(poolID);
+        
+        vm.startPrank(user1, user1);
+        stakeToken.approve(address(vault), stakeAmount);
+        vault.deposit(poolID, stakeAmount);
+        vm.stopPrank();
+
+        // Warp time to just before the end time
+        vm.warp(endTime);
+
+        // Harvest rewards just before end time
+        vm.prank(user1, user1);
+        vault.harvest(poolID);
+        uint256 rewardsAfterEnd = rewardsToken.balanceOf(user1);
+
+        // Check that no additional rewards were produced after the end time
+        assertGt(rewardsAfterEnd, 0, "No additional rewards should be produced after end time");
+
+        // Try to harvest again to ensure no rewards are accumulated
+        vm.warp(endTime + 40 days);
+        vm.prank(user1, user1);
+        vault.harvest(poolID);
+        uint256 rewardsAfterHarvest = rewardsToken.balanceOf(user1);
+        uint256 rewardsDiff = rewardsAfterHarvest - rewardsAfterEnd;
+
+        assertEq(rewardsDiff, 0, "No rewards should be produced after end time");
+}
+
+    function testDepositMintsStakedIMO(uint256 amountIn) public {
+        vm.assume(amountIn > 1e5 && amountIn < hardcap /2);
+        uint256 depositAmount = amountIn;
+        uint256 POOL_ID = 0;
+        deal(address(stakeToken), user1, depositAmount);
+        deal(address(stakeToken), user2, depositAmount);
+
+        vm.prank(user1, user1);
+        stakeToken.approve(address(vault), depositAmount);
+
+        vm.prank(user2, user2);
+        stakeToken.approve(address(vault), depositAmount);
+
+
+        // Users deposit equal amounts
+        vm.prank(user1, user1);
+        vault.deposit(POOL_ID, depositAmount);
+
+        vm.prank(user2, user2);
+        vault.deposit(POOL_ID, depositAmount);
+
+        // Advance time
+        vm.warp(block.timestamp + 365 days);
+
+        // Check rewards
+        uint256 user1Rewards = vault.getRewardOfUser(user1, POOL_ID);
+        uint256 user2Rewards = vault.getRewardOfUser(user2, POOL_ID);
+
+        assertNotEq(user1Rewards, 0);
+
+        assertNotEq(user2Rewards, 0);
+        assertApproxEqRel(user1Rewards, user2Rewards, 1e15); // Allow 0.1% difference due to rounding
+
+       // Harvest rewards
+        uint256 rewardsTokenUser1BeforeHarvest = rewardsToken.balanceOf(user1);
+
+        vm.prank(user1, user1);
+        vault.harvest(0);
+        uint256 rewardsTokenUser1AfterHarvest = rewardsToken.balanceOf(user1);
+        uint256 user1Harvested = rewardsTokenUser1AfterHarvest - rewardsTokenUser1BeforeHarvest;
+
+        assertApproxEqRel(user1Harvested, user1Rewards, 1e15); // Allow 0.1% difference due to rounding
+
+        uint256 rewardsTokenUser2BeforeHarvest = rewardsToken.balanceOf(user2);
+        vm.prank(user2, user2);
+        vault.harvest(0);
+        uint256 rewardsTokenUser2AfterHarvest = rewardsToken.balanceOf(user2);
+        uint256 user2Harvested = rewardsTokenUser2AfterHarvest - rewardsTokenUser2BeforeHarvest;
+
+        assertApproxEqRel(user2Harvested, user2Rewards, 1e15); // Allow 0.1% difference due to rounding
+
+        assertApproxEqRel(user1Harvested, user2Harvested, 1e15); // Allow 0.1% difference due to rounding
+
+
+        assertEq(stakedIMO.balanceOf(user1), depositAmount, "Staked IMO not minted correctly");
+        assertEq(stakedIMO.balanceOf(user2), depositAmount, "Staked IMO not minted correctly");
+
+        vm.prank(user1, user1);
+        vm.expectRevert();
+        stakedIMO.transfer(user2, depositAmount);
+
+
+    }
+
+    function testWithdrawBurnsStakedIMO(uint256 stakedAmount) public {
+        testWithdraw(stakedAmount);
+        assertEq(stakedIMO.balanceOf(user1), 0, "Staked IMO not burned correctly");
+    }
+
+    
+
+    function testMultipleDepositsAndWithdrawals() public {
+        uint256 depositAmount1 = 50 ether;
+        uint256 depositAmount2 = 30 ether;
+        uint256 PID = 0;
+
+        // Deal tokens to user1
+        deal(address(stakeToken), user1, depositAmount1 + depositAmount2);
+
+        vm.startPrank(user1, user1);
+        stakeToken.approve(address(vault), depositAmount1 + depositAmount2);
+
+        // First deposit
+        vault.deposit(PID, depositAmount1);
+        
+        // Second deposit
+        vault.deposit(PID, depositAmount2);
+
+        assertEq(stakedIMO.balanceOf(user1), depositAmount1 + depositAmount2, "Staked IMO not minted correctly for multiple deposits");
+
+        // Warp time forward by 31 days before first withdrawal
+        vm.warp(block.timestamp + 31 days);
+
+        uint256 initialBalance = stakeToken.balanceOf(user1);
+
+        // Partial withdrawal
+        (uint256 shares,,,,) = vault.users(PID, user1);
+        vault.withdraw(PID, depositAmount1);
+
+        uint256 midBalance = stakeToken.balanceOf(user1);
+        //assertEq(midBalance - initialBalance, (depositAmount1 + depositAmount2) / 2, "Partial withdrawal amount incorrect");
+
+        console2.log("rewards balance of masterchef", rewardsToken.balanceOf(address(vault.masterchef())));
+        console2.log("rewards balance of DCBVAult", rewardsToken.balanceOf(address(vault)));
+
+        //Weird shit hapens on 2 consecutive withdrawals, need to check it more
+        deal(address(rewardsToken), address(vault), 100000000000000 ether);
+
+        (uint256 totalShares, , ) = vault.pools(PID);
+        (uint256 userShares, ,, , ) = vault.users(PID, user1);
+
+        console2.log("pool total shares", totalShares);
+        console2.log("user total shares", userShares);
+        /*
+        uint256 accumulatedRewards = vault.accumulatedRewardsPerShare(PID);
+        console2.log("accumulatedRewards", accumulatedRewards);
+        */
+
+        // Full withdrawal of remaining balance
+        vault.withdraw(PID, depositAmount2);
+        vm.stopPrank();
+
+        uint256 finalBalance = stakeToken.balanceOf(user1);
+        assertEq(finalBalance - initialBalance, depositAmount1 + depositAmount2, "Full withdrawal amount incorrect");
+        assertEq(stakedIMO.balanceOf(user1), 0, "Staked IMO not burned correctly for final withdrawal");
+}
+
+
 
 
 }

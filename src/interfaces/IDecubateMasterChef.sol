@@ -2,25 +2,8 @@
 pragma solidity >=0.8.19;
 
 interface IDecubateMasterChef {
-  /**
-   * @dev NFTMultiplier reflects the info of each NFT
-   *
-   * @param active if the NFT is active
-   * @param name name of the NFT
-   * @param contractAdd address of the NFT contract
-   * @param multiplier multiplier of the NFT
-   * @param startIdx start index of the NFT
-   * @param endIdx end index of the NFT
-   */
-  struct NFTMultiplier {
-    bool active;
-    string name;
-    address contractAdd;
-    uint16 multiplier;
-    uint16 startIdx;
-    uint16 endIdx;
-  }
-
+ 
+   
   /**
    *
    * @dev User reflects the info of each user
@@ -64,39 +47,16 @@ interface IDecubateMasterChef {
 
   ) external;
 
-  function setNFT(
-    uint256 _pid,
-    string calldata _name,
-    address _contractAdd,
-    bool _isUsed,
-    uint16 _multiplier,
-    uint16 _startIdx,
-    uint16 _endIdx
-  ) external;
-
   function stake(uint256 _pid, uint256 _amount) external returns (bool);
 
   function claim(uint256 _pid) external returns (bool);
 
-  function reinvest(uint256 _pid) external returns (bool);
-
-  function reinvestAll() external returns (bool);
-
   function claimAll() external returns (bool);
-
-  function handleNFTMultiplier(
-    uint256 _pid,
-    address _user,
-    uint256 _rewardAmount
-  ) external returns (uint256);
 
   function unStake(uint256 _pid, uint256 _amount) external returns (bool);
 
-  function updateCompounder(address _compounder) external;
-
   function canClaim(uint256 _pid, address _addr) external view returns (bool);
 
-  function calcMultiplier(uint256 _pid, address _addr) external view returns (uint16);
 
   function payout(uint256 _pid, address _addr) external view returns (uint256 value);
 

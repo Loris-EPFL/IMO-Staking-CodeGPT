@@ -17,12 +17,12 @@ abstract contract ABalancer is EtherUtils, ReentrancyGuard {
     using SafeTransferLib for ERC20;
 
     // Base mainnet address of IMO.
-    address internal IMO = 	0x0f1D1b7abAeC1Df25f2C4Db751686FC5233f6D3f;
+    address internal IMO = 	0x5A7a2bf9fFae199f088B25837DcD7E115CF8E1bb;
 
     // Base mainnet address balanlcer vault.
     address public vault = 0xBA12222222228d8Ba445958a75a0704d566BF2C8;
     // Base mainnet id for balancer IMO-WETH pool.
-    bytes32 public poolId = 0x7120fd744ca7b45517243ce095c568fd88661c66000200000000000000000179;
+    bytes32 public poolId = 0x007bb7a4bfc214df06474e39142288e99540f2b3000200000000000000000191;
     //Base mainnet Address of Balancer Queries 
     address public balancerQueries = 0x300Ab2038EAc391f26D9F895dc61F8F66a548833;
 
@@ -121,14 +121,14 @@ abstract contract ABalancer is EtherUtils, ReentrancyGuard {
         (amountOutCalculated,) = IbalancerQueries(balancerQueries).queryJoin(poolId, sender, receiver, request);
     }
 
-    function joinImoPool(uint256 EthAmount, uint256 ImoAmount, address sender, address receiver) internal {
+    function joinImoPool(uint256 EthAmount, uint256 ImoAmount, address sender, address receiver) public {
         address[] memory assets = new address[](2);
-        assets[0] = IMO;  // 0x0f1D1b7abAeC1Df25f2C4Db751686FC5233f6D3f
-        assets[1] = WETH; // 0x4200000000000000000000000000000000000006
+        assets[0] = WETH;  // 0x0f1D1b7abAeC1Df25f2C4Db751686FC5233f6D3f
+        assets[1] = IMO; // 0x4200000000000000000000000000000000000006
 
         uint256[] memory maxAmountsIn = new uint256[](2);
-        maxAmountsIn[0] = ImoAmount;
-        maxAmountsIn[1] = EthAmount;
+        maxAmountsIn[0] = EthAmount;
+        maxAmountsIn[1] = ImoAmount;
 
         bytes memory userData = abi.encode(
             uint256(WeightedPoolUserData.JoinKind.EXACT_TOKENS_IN_FOR_BPT_OUT), // = 1
@@ -147,6 +147,35 @@ abstract contract ABalancer is EtherUtils, ReentrancyGuard {
         IVault(vault).joinPool(poolId, sender, receiver, request);
 
     }  
+
+    function joinImoPoolOnlyEth(uint256 EthAmount, address sender, address receiver) public {
+        address[] memory assets = new address[](2);
+        assets[0] = IMO;  // 0x0f1D1b7abAeC1Df25f2C4Db751686FC5233f6D3f
+        assets[1] = WETH; // 0x4200000000000000000000000000000000000006
+
+        uint256[] memory maxAmountsIn = new uint256[](2);
+        maxAmountsIn[0] = 0;
+        maxAmountsIn[1] = EthAmount;
+
+        bytes memory userData = abi.encode(
+            uint256(WeightedPoolUserData.JoinKind.EXACT_TOKENS_IN_FOR_BPT_OUT), // = 1
+            maxAmountsIn,
+            uint256(0)
+        );
+
+        IVault.JoinPoolRequest memory request = IVault.JoinPoolRequest({
+            assets: assets,
+            maxAmountsIn: maxAmountsIn,
+            userData: userData,
+            fromInternalBalance: false
+        });
+
+    
+        IVault(vault).joinPool(poolId, sender, receiver, request);
+
+    } 
+
+    
 
     function getUserImoBalance(address user, address BPTpoolToken, uint256 BPTbalanceofUser) internal view returns (uint256) {
 

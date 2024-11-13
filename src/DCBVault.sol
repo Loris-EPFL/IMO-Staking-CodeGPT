@@ -10,6 +10,7 @@ import { IDecubateMasterChef } from "./interfaces/IDecubateMasterChef.sol";
 import {ABalancer} from "./balancer/zapper/ABalancer.sol";
 import {Ownable} from "@openzeppelin/access/Ownable.sol";
 import {IWETH} from "./balancer/interfaces/IWETH.sol";
+import {IstIMO} from "./interfaces/IstIMO.sol";
 
 /**
  * @title DCBVault
@@ -33,12 +34,14 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     uint256 lastHarvestedTime; // keeps track of the last pool update
   }
 
+  //Rebate Struct, Herited from Cookie, Unused
   struct Rebate {
     bool isEarlyWithdrawActive; // If early withdraw is active
     uint256 rebatePercent; // Rebate percent
     uint256 earlyWithdrawPenalty; // Penalty for early withdraw
   }
 
+  //Fee Struct, Herited from Cookie, Unused as fees are 0
   struct Fee {
     uint256 depositFee;
     address feeReceiver;
@@ -48,7 +51,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
 
   uint256 public callFee; // Fee to call harvestAll function
   uint256 internal constant DIVISOR = 10000;
-  uint8 balancerPoolWeight = 75;
+  uint8 balancerPoolWeight = 80;
 
   // User staking info
   mapping(uint256 => mapping(address => UserInfo)) public users;
@@ -62,14 +65,21 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
   // Deposit fee info
   Fee public fee;
 
+  //Staked IMO token for DAO
+  IstIMO public stakedIMO;
+
+  // Role for Access Control
   bytes32 internal constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
 
+  //Emited when a user deposits tokens
   event Deposit(
     address indexed sender,
     uint256 indexed poolId,
     uint256 amount,
     uint256 lastDepositedTime
   );
+
+  //Events
   event Withdraw(address indexed sender, uint256 indexed poolId, uint256 amount, uint256 time);
   event Harvest(address indexed sender, uint256 indexed poolId, uint256 time);
   event WithdrawPenalty(address indexed sender, uint256 indexed poolId, uint256 amount);
@@ -82,12 +92,14 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
   event DepositFee(address feeReceiver, uint256 depositFee);
   event ManagerRoleSet(address _user, bool _status);
 
+  //Errors
   error NoBalance();
   error NullAmount();
   error IncorrectAmount();
   error AddressZero();
   error NotApproved();
 
+  // Access Control for Manager Role
   modifier onlyManager() {
     require(hasRole(MANAGER_ROLE, msg.sender), "Only manager");
     _;
@@ -119,6 +131,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     _grantRole(DEFAULT_ADMIN_ROLE, _admin);
     _grantRole(MANAGER_ROLE, _admin);
 
+    //Sets MasterChef Address and CallFee
     masterchef = IDecubateMasterChef(_masterchef);
     callFee = 0;
 
@@ -127,6 +140,11 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     fee.feeReceiver = msg.sender;
   }
 
+  /**
+   * @notice Sets new Manager Role. Only callable by Manager Role
+   * @param _user Address of new Manager
+   * @param _status true = grant role, false = revoke role
+   */
   function setManagerRole(address _user, bool _status) external onlyRole(DEFAULT_ADMIN_ROLE) {
     if (_status) {
       grantRole(MANAGER_ROLE, _user);
@@ -137,6 +155,12 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     emit ManagerRoleSet(_user, _status);
   }
 
+  /**
+   * @notice Zap Ether Directly to IMO Pool
+   * @param _pid Pool id
+   * Amount of tokens to deposit given by payable value of ether
+   * nonReentrant to prevent exploits
+   */
   function zapEtherAndStakeIMO(uint256 _pid)
         external
         payable
@@ -147,6 +171,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
       if (msg.value == 0) revert NullAmount();
       if(paused()) revert EnforcedPause();
       
+      //Get Pool Infos
         PoolInfo storage pool = pools[_pid];
 
         (
@@ -160,14 +185,11 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
           
         ) = masterchef.poolInfo(_pid);
 
-          
-        
-
         uint256 stopDepo = endDate - (lockPeriodInDays * 1 days);
-        require(block.timestamp <= stopDepo, "Staking disabled for this pool");
-
+        require(block.timestamp <= stopDepo, "Staking disabled for this pool"); //Don't allow deposit after endDate
+        
         IERC20 stakeTokenERC = IERC20(stakeToken);
-
+        //Compute BPT balance of contract before zapping
         uint256 bptBalanceBefore = stakeTokenERC.balanceOf(address(this));
 
         uint256 EthToZap = (msg.value * balancerPoolWeight) /100;
@@ -190,6 +212,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
         stakedAmount = stakeTokenERC.balanceOf(address(this)) - bptBalanceBefore; //get new BPT balance of contract
         if(stakedAmount == 0 || totalDeposit + stakedAmount >= hardCap) revert IncorrectAmount();
 
+        //Increase User's Pool Balance
         uint256 poolBal = balanceOf(_pid);
         poolBal += masterchef.payout(_pid, address(this));
 
@@ -198,10 +221,11 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
         if (pool.totalShares != 0) {
           currentShares = (stakedAmount * pool.totalShares) / poolBal;
         } else {
-          stakeTokenERC.approve(address(masterchef), type(uint256).max);
+          stakeTokenERC.safeIncreaseAllowance(address(masterchef), type(uint256).max);
           currentShares = stakedAmount;
         }
 
+        //Update Storage
         UserInfo storage user = users[_pid][msg.sender];
 
         user.shares += currentShares;
@@ -209,13 +233,18 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
         user.totalInvested += stakedAmount;
 
         pool.totalShares += currentShares;
+
+        //Increase Pending Amount to Stake
         pool.pendingClaim += stakedAmount;
 
+        //Call Internal _earn to stake
         _earn(_pid);
+
+        //Mint same amount of stIMO for DAO
+        stakedIMO.mint(msg.sender, stakedAmount); 
 
         emit Deposit(msg.sender, _pid, stakedAmount, block.timestamp);
         return(stakedAmount);
-            
     }
 
 
@@ -255,7 +284,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     if (pool.totalShares != 0) {
       currentShares = (_amount * pool.totalShares) / poolBal;
     } else {
-      token.approve(address(masterchef), type(uint256).max);
+      token.safeIncreaseAllowance(address(masterchef), type(uint256).max);
       currentShares = _amount;
     }
 
@@ -271,6 +300,8 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     pool.pendingClaim += _amount;
 
     _earn(_pid);
+
+    stakedIMO.mint(msg.sender, _amount); //Mint same amount of stIMO for DAO
 
     emit Deposit(msg.sender, _pid, _amount, block.timestamp);
   }
@@ -390,8 +421,8 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
     uint256 lpSupply = pool.totalShares;
 
     if (lpSupply > 0) {
-        uint256 pending = masterchef.payout(_pid, address(this));
-        accRewardsPerShare += (pending * 1e12) / lpSupply;
+        uint256 pendingRewardsForAddress = masterchef.payout(_pid, address(this));
+        accRewardsPerShare += (pendingRewardsForAddress * 1e12) / lpSupply;
     }
 
     uint256 pending = (user.shares * accRewardsPerShare) / 1e12 - user.rewardsDebt;
@@ -413,29 +444,24 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
     require(_shares <= user.shares, "Withdraw exceeds balance");
     require(canUnstake(msg.sender, _pid), "Stake still locked");
 
+    //Harvest All Rewards
     harvest(_pid);
 
     uint256 currentAmount = (balanceOf(_pid) * _shares) / pool.totalShares;
-  
-    uint256 totalReward = currentAmount - (user.totalInvested * _shares) / user.shares;
 
+    //Update Storage
     user.rewardsDebt = (user.shares * accumulatedRewardsPerShare[_pid]) / 1e12;
     user.totalInvested -= (user.totalInvested * _shares) / user.shares;
     user.shares -= _shares;
     pool.totalShares -= _shares;
    
     IERC20 token = getTokenOfPool(_pid);
-    masterchef.unStake(_pid, currentAmount);
-
-    (, uint256 lockPeriod, , , , , ,) = masterchef.poolInfo(_pid);
-    if (block.timestamp < user.lastDepositedTime + (lockPeriod * 1 days)) {
-      uint256 penalty = (currentAmount * rebates[_pid].earlyWithdrawPenalty) / DIVISOR;
-      token.safeTransfer(address(masterchef), penalty);
-      currentAmount -= penalty;
-      emit WithdrawPenalty(msg.sender, _pid, penalty);
-    }
+    bool didUnstake = masterchef.unStake(_pid, currentAmount);
+    require(didUnstake, "Unstake failed");
 
     token.safeTransfer(msg.sender, currentAmount);
+
+    stakedIMO.burn(msg.sender, currentAmount);
 
     emit Withdraw(msg.sender, _pid, currentAmount, block.timestamp);
   }
@@ -452,26 +478,27 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
 
     uint256 prevBal = token.balanceOf(address(this));
     
-    //Remove Cannot Claim Rewards while Stake is Locked
-    //masterchef.canClaim(_pid, address(this));
     bool isClaimSuccess = masterchef.claim(_pid);
     require(isClaimSuccess, "Claim failed");
     
     uint256 claimed = token.balanceOf(address(this)) - prevBal;
     
     uint256 currentCallFee = (claimed * callFee) / DIVISOR;
+
     claimed -= currentCallFee;
     // Update accumulated rewards per share
-    accumulatedRewardsPerShare[_pid] += (claimed * 1e12) / pool.totalShares;
+    accumulatedRewardsPerShare[_pid] = accumulatedRewardsPerShare[_pid] + ((claimed * 1e12) / pool.totalShares);
+    
     
     // Calculate the user's share of rewards
-    uint256 pending = (user.shares * accumulatedRewardsPerShare[_pid]) / 1e12 - user.rewardsDebt;
-    
-    if (pending > 0) {
-        SafeERC20.safeTransfer(token, msg.sender, pending);
-        user.totalClaimed += pending;
+    if ((user.shares * accumulatedRewardsPerShare[_pid]) / 1e12 > user.rewardsDebt){
+        uint256 pending = (user.shares * accumulatedRewardsPerShare[_pid]) / 1e12 - user.rewardsDebt; //This line reverts
+         if (pending > 0) {
+              SafeERC20.safeTransfer(token, msg.sender, pending);
+              user.totalClaimed += pending;
+        }
     }
-    
+
     // Update user's rewards debt
     user.rewardsDebt = (user.shares * accumulatedRewardsPerShare[_pid]) / 1e12;
 
@@ -539,8 +566,18 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
     return IERC20(token);
   }
 
+   /**
+   * @notice Returns the Reward token of the pool
+   * @param _pid Pool id
+   * @return Token of the pool
+   */
   function getRewardTokenOfPool(uint256 _pid) internal view returns (IERC20) {
     (, , , , , , , address rewardToken) = masterchef.poolInfo(_pid);
     return IERC20(rewardToken);
+  }
+
+  //Setter for stIMO (for DAO purposes), only callable by owner
+  function updateStakedIMO(address _stakedIMO) external onlyOwner() {
+    stakedIMO = IstIMO(_stakedIMO);
   }
 }
