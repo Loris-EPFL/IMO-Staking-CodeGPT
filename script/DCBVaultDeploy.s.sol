@@ -45,8 +45,8 @@ contract DeployScript is Script {
         vault.setDepositFee(msg.sender, 0);
 
         // Use the actual token addresses for Base Network
-        address stakeTokenAddress = 0x7120fD744CA7B45517243CE095C568Fd88661c66;
-        address rewardsTokenAddress = 0x0f1D1b7abAeC1Df25f2C4Db751686FC5233f6D3f;
+        address stakeTokenAddress = 0x007bb7a4bfc214DF06474E39142288E99540f2b3;
+        address rewardsTokenAddress = 0x5A7a2bf9fFae199f088B25837DcD7E115CF8E1bb;
 
         // Add a pool to MasterChef
         masterChef.add(
