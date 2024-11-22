@@ -12,7 +12,6 @@ contract DecubateMasterChefTest is Test {
     DecubateMasterChef public masterChef;
     IERC20 public stakeToken;
     IERC20 public rewardsToken;
-    IERC721Enumerable public nftToken;
 
     address payable[] internal users;
     address payable[] internal admins;
@@ -20,6 +19,12 @@ contract DecubateMasterChefTest is Test {
     Utils internal utils;
     address public admin;
     address public feeAdress;
+
+    bytes32 balancerPoolID = 0x007bb7a4bfc214df06474e39142288e99540f2b3000200000000000000000191;
+    address balancerVault = balancerVault;
+    address IMO = 0x5A7a2bf9fFae199f088B25837DcD7E115CF8E1bb;
+    address IMO_BPT = 0x007bb7a4bfc214DF06474E39142288E99540f2b3;
+    address WETH = 0x4200000000000000000000000000000000000006;
    
 
     function setUp() public {
@@ -38,11 +43,9 @@ contract DecubateMasterChefTest is Test {
 
         users = utils.createUsers(2);
 
-        stakeToken = IERC20(0x7120fD744CA7B45517243CE095C568Fd88661c66); // Balancer 75 IMO / 25 WETH pool token
-        rewardsToken = IERC20(0x0f1D1b7abAeC1Df25f2C4Db751686FC5233f6D3f); // IMO token
+        stakeToken = IERC20(IMO_BPT); // Balancer 75 IMO / 25 WETH pool token
+        rewardsToken = IERC20(IMO); // IMO token
 
-        // Deploy a mock NFT contract for testing
-        nftToken = IERC721Enumerable(address(new MockERC721("NFT Token", "NFT")));
 
         // Assume we have a way to mint or transfer tokens to users for testing
         deal(address(stakeToken), users[0], 100 ether);
@@ -193,103 +196,6 @@ contract DecubateMasterChefTest is Test {
         vm.stopPrank();
     }
 
-    function NFTMultiplier() public {
-        vm.startPrank(admin);
-        masterChef.add(120, 30, block.timestamp + 365 days, 1000 ether, address(stakeToken), address(rewardsToken));
-        masterChef.setNFT(0, "Test NFT", address(nftToken), true, 20, 1, 100);
-        vm.stopPrank();
+   
 
-        deal(address(stakeToken), users[0], 100 ether);
-
-
-        MockERC721(address(nftToken)).mint(users[0], 1);
-
-        vm.startPrank(users[0]);
-        stakeToken.approve(address(masterChef), 100 ether);
-        masterChef.stake(0, 100 ether);
-
-        vm.warp(block.timestamp + 31 days);
-
-        uint256 rewardWithNFT = masterChef.payout(0, users[0]);
-        
-        vm.stopPrank();
-
-        MockERC721(address(nftToken)).transferFrom(users[0], address(this), 1);
-
-        uint256 rewardWithoutNFT = masterChef.payout(0, users[0]);
-
-        assertTrue(rewardWithNFT > rewardWithoutNFT);
-    }
-}
-
-// Mock ERC721 contract for testing
-contract MockERC721 is IERC721Enumerable {
-    string public name;
-    string public symbol;
-    mapping(address => uint256) private _balances;
-    mapping(uint256 => address) private _owners;
-    mapping(address => mapping(uint256 => uint256)) private _ownedTokens;
-    mapping(uint256 => uint256) private _ownedTokensIndex;
-    uint256[] private _allTokens;
-    mapping(uint256 => uint256) private _allTokensIndex;
-
-    constructor(string memory _name, string memory _symbol) {
-        name = _name;
-        symbol = _symbol;
-    }
-
-    function mint(address to, uint256 tokenId) public {
-        //_mint(to, tokenId);
-        require(to != address(0), "ERC721: mint to the zero address");
-        require(!_exists(tokenId), "ERC721: token already minted");
-
-        _balances[to] += 1;
-        _owners[tokenId] = to;
-
-        uint256 length = _balances[to];
-        _ownedTokens[to][length - 1] = tokenId;
-        _ownedTokensIndex[tokenId] = length - 1;
-
-        _allTokens.push(tokenId);
-        _allTokensIndex[tokenId] = _allTokens.length - 1;
-    
-    }
-
-    function balanceOf(address owner) public view override returns (uint256) {
-        return _balances[owner];
-    }
-
-    function ownerOf(uint256 tokenId) public view override returns (address) {
-        address owner = _owners[tokenId];
-        require(owner != address(0), "ERC721: owner query for nonexistent token");
-        return owner;
-    }
-
-    function tokenOfOwnerByIndex(address owner, uint256 index) public view override returns (uint256) {
-        require(index < balanceOf(owner), "ERC721Enumerable: owner index out of bounds");
-        return _ownedTokens[owner][index];
-    }
-
-    function totalSupply() public view override returns (uint256) {
-        return _allTokens.length;
-    }
-
-    function tokenByIndex(uint256 index) public view override returns (uint256) {
-        require(index < totalSupply(), "ERC721Enumerable: global index out of bounds");
-        return _allTokens[index];
-    }
-
-    function _exists(uint256 tokenId) internal view returns (bool) {
-        return _owners[tokenId] != address(0);
-    }
-
-    // Implement other IERC721 and IERC721Enumerable functions as needed for testing
-    function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data) public override {}
-    function safeTransferFrom(address from,address to,uint256 tokenId) public override {}
-    function transferFrom(address from, address to, uint256 tokenId) public override {}
-    function approve(address to, uint256 tokenId) public override {}
-    function getApproved(uint256 tokenId) public view override returns (address) {}
-    function setApprovalForAll(address operator, bool approved) public override {}
-    function isApprovedForAll(address owner, address operator) public view override returns (bool) {}
-    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {}
 }
