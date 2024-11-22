@@ -32,9 +32,6 @@ contract Zapper is ABalancer {
 
     error IncorrectAmount();
 
-
-   
-
     function zapEtherAndStakeIMO(uint256 _pid) external payable returns (uint256 stakedAmount) {
         require(msg.sender != address(0), "AddressZero");
         require(msg.value > 0, "NullAmount");
@@ -68,6 +65,7 @@ contract Zapper is ABalancer {
 
         return stakedAmount;
     }
+    
 
    
 }

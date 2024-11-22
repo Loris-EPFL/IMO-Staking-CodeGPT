@@ -8,6 +8,7 @@ There are two main contracts in this repository:
 
 1. **DCBVault.sol**: Handles user interactions and the ETH zapper functionalities.
 2. **DecubateMasterChef.sol**: Manages the locks for staking pools.
+3. **Zapper.sol**: Handles the ETH zapper functionalities and DAO.
 
 ### Key Features
 
