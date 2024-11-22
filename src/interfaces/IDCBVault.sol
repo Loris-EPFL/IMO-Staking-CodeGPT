@@ -4,7 +4,7 @@ pragma solidity >=0.8.17;
 import { IERC20 } from "@openzeppelin/interfaces/IERC20.sol";
 
 interface IDCBVault {
-    function deposit(uint256 _pid, uint256 _amount) external payable;
+    function deposit(uint256 _pid, uint256 _amount, address receiver) external payable;
     function withdrawAll(uint256 _pid) external;
     function harvestAll() external;
     function setCallFee(uint256 _callFee) external;

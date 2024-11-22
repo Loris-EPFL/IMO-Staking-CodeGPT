@@ -61,8 +61,10 @@ contract Zapper is ABalancer {
         stakedAmount = stakeTokenERC.balanceOf(address(this)) - bptBalanceBefore; //get new BPT balance of contract
         if(stakedAmount == 0) revert IncorrectAmount();
 
+        stakeTokenERC.safeIncreaseAllowance(address(DecubateVault), stakedAmount);
+
         // Call the deposit function of DCBVault
-        DecubateVault.deposit(_pid, stakedAmount);
+        DecubateVault.deposit(_pid, stakedAmount, msg.sender);
 
         return stakedAmount;
     }

@@ -99,7 +99,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, Ownable, Reentrancy
   event DepositFee(address feeReceiver, uint256 depositFee);
   event ManagerRoleSet(address _user, bool _status);
   event ContractAuthorizationUpdated(address indexed contractAddress, bool status);
-
+  event ZapperUpdated(address indexed zapper);
 
   //Errors
   error NoBalance();
@@ -275,7 +275,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, Ownable, Reentrancy
    * @param _pid Pool id
    * @param _amount Amount of tokens to deposit
    */
-  function deposit(uint256 _pid, uint256 _amount) external whenNotPaused onlyAuthorizedContract nonReentrant {
+  function deposit(uint256 _pid, uint256 _amount, address receiver) external whenNotPaused onlyAuthorizedContract nonReentrant {
     require(_amount > 0, "Nothing to deposit");
 
     PoolInfo storage pool = pools[_pid];
@@ -313,7 +313,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, Ownable, Reentrancy
       currentShares = _amount;
     }
 
-    UserInfo storage user = users[_pid][msg.sender];
+    UserInfo storage user = users[_pid][receiver];
 
     user.shares += currentShares;
     user.lastDepositedTime = block.timestamp;
@@ -326,15 +326,16 @@ contract DCBVault is AccessControl, Pausable, Initializable, Ownable, Reentrancy
 
     _earn(_pid);
 
+    //DAO mint stIMO
     if(address(token) == address(rewardsToken)){
-      stakedIMO.mint(msg.sender, _amount); //Mint same amount of stIMO for DAO if deposit is IMO
+      stakedIMO.mint(receiver, _amount); //Mint same amount of stIMO for DAO if deposit is IMO
     }else{
       uint256 IMOBalanceForBPT = zapper.getUserImoBalanceFromPool(_amount);
       IMOBalanceForBPT = IMOBalanceForBPT * 100 / 80; //80% of the BPT is in IMO, so we adjust 100% to 80%
-      stakedIMO.mint(msg.sender, IMOBalanceForBPT); //Mint same amount of stIMO for DAO
+      stakedIMO.mint(receiver, IMOBalanceForBPT); //Mint same amount of stIMO for DAO
     }
 
-    emit Deposit(msg.sender, _pid, _amount, block.timestamp);
+    emit Deposit(receiver, _pid, _amount, block.timestamp);
   }
 
   /**
@@ -487,12 +488,20 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
     pool.totalShares -= _shares;
    
     IERC20 token = getTokenOfPool(_pid);
+    IERC20 rewardsToken = getRewardTokenOfPool(_pid);
     bool didUnstake = masterchef.unStake(_pid, currentAmount);
     require(didUnstake, "Unstake failed");
 
     token.safeTransfer(msg.sender, currentAmount);
 
-    stakedIMO.burn(msg.sender, currentAmount);
+    //DAO mint stIMO
+    if(address(token) == address(rewardsToken)){
+      stakedIMO.burn(msg.sender, currentAmount); //Mint same amount of stIMO for DAO if deposit is IMO
+    }else{
+      uint256 IMOBalanceForBPT = zapper.getUserImoBalanceFromPool(currentAmount);
+      IMOBalanceForBPT = IMOBalanceForBPT * 100 / 80; //80% of the BPT is in IMO, so we adjust 100% to 80%
+      stakedIMO.burn(msg.sender, IMOBalanceForBPT); //Mint same amount of stIMO for DAO
+    }
 
     emit Withdraw(msg.sender, _pid, currentAmount, block.timestamp);
   }
@@ -501,7 +510,7 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
    * @notice Harvests the pool rewards
    * @param _pid Pool id
    */
-  function harvest(uint256 _pid) public onlyAuthorizedContract whenNotPaused nonReentrant{
+  function harvest(uint256 _pid) public onlyAuthorizedContract whenNotPaused{
     PoolInfo storage pool = pools[_pid];
     UserInfo storage user = users[_pid][msg.sender];
 
@@ -579,7 +588,7 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
    * @notice Stake token to the pool
    * @param _pid Pool id
    */
-  function _earn(uint256 _pid) internal nonReentrant{
+  function _earn(uint256 _pid) internal{
     uint256 bal = pools[_pid].pendingClaim;
     if (bal > 0) {
       masterchef.stake(_pid, bal);
@@ -615,5 +624,7 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
   //Setter for Zapper contract, only callable by owner
   function updateZapper(address _zapper) external onlyOwner() {
     zapper = IABalancer(_zapper);
+    authorizedContracts[_zapper] = true;
+    emit ZapperUpdated(_zapper);
   }
 }

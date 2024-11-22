@@ -9,12 +9,15 @@ import "../src/DecubateMasterChef.sol";
 import {Utils} from "./utils/Utils.sol";
 import {IVault} from "../src/balancer/interfaces/IVault.sol";
 import {IstIMO} from "../src/interfaces/IstIMO.sol";
-
+import {Zapper} from "../src/Zapper.sol";
+import {IstIMO} from "../src/interfaces/IstIMO.sol";
 
 
 contract DCBVaultTest is Test {
     DCBVault public vault;
     DecubateMasterChef public masterChef;
+    IstIMO public stakedIMO = IstIMO(0x2f10F5F8C3704270fe64BCf40dB8d9a78Ac97778);
+    Zapper public zapper;
     IERC20 public stakeToken;
     IERC20 public rewardsToken;
 
@@ -37,7 +40,6 @@ contract DCBVaultTest is Test {
     address IMO = 0x5A7a2bf9fFae199f088B25837DcD7E115CF8E1bb;
     address IMO_BPT = 0x007bb7a4bfc214DF06474E39142288E99540f2b3;
     address WETH = 0x4200000000000000000000000000000000000006;
-    IstIMO public stakedIMO = IstIMO(0x2f10F5F8C3704270fe64BCf40dB8d9a78Ac97778);
     uint256 fuzzerLowBound = 1 ether; //deposit at least 1 BPT
 
     function joinImoPool(uint256 EthAmount, uint256 ImoAmount, address sender, address receiver) public {
@@ -86,6 +88,7 @@ contract DCBVaultTest is Test {
 
 
 
+
         // Use the actual token addresses
         stakeToken = IERC20(IMO_BPT);
         rewardsToken = IERC20(IMO);
@@ -93,8 +96,14 @@ contract DCBVaultTest is Test {
         vault = new DCBVault(admin);
         vault.initialize(masterChef, admin);
 
+        zapper = new Zapper(IMO_BPT, address(vault), address(stakedIMO), admin);
+
+
         vm.prank(0x27E20BD50106e3Fbc50A230bd5dC02D7793c7D84);
         stakedIMO.changeStakingContract(address(vault));
+
+        vm.prank(admin);
+        vault.updateZapper(address(zapper));
 
         vault.setDepositFee(admin, 0);
         vm.prank(admin);
@@ -132,7 +141,7 @@ contract DCBVaultTest is Test {
         uint256 poolID = 1;
         vm.startPrank(user1, user1);
         stakeToken.approve(address(vault), depositAmount);
-        vault.deposit(poolID, depositAmount);
+        vault.deposit(poolID, depositAmount, user1);
         vm.stopPrank();
 
         (uint256 shares, , uint256 totalInvested, , ) = vault.users(poolID, user1);
@@ -147,7 +156,7 @@ contract DCBVaultTest is Test {
 
         vm.startPrank(user1, user1);
         stakeToken.approve(address(vault), zapAmount);
-        vault.deposit(0, zapAmount);
+        vault.deposit(0, zapAmount, user1);
 
         // Warp time to after lock period
         vm.warp(block.timestamp + 31 days);
@@ -170,7 +179,7 @@ contract DCBVaultTest is Test {
         uint256 poolID = 0;
         vm.startPrank(user1, user1);
         stakeToken.approve(address(vault),stakeAmount);
-        vault.deposit(poolID, stakeAmount); //30 * 1e18 is 0.0036 ETH (9,44$) + 264,5 IMO (37,15$) = 46,59$
+        vault.deposit(poolID, stakeAmount, user1); //30 * 1e18 is 0.0036 ETH (9,44$) + 264,5 IMO (37,15$) = 46,59$
         vm.stopPrank();
 
         // Warp time to accumulate rewards
@@ -205,7 +214,7 @@ contract DCBVaultTest is Test {
         vm.startPrank(user1);
         
         // Perform the zap and stake
-        uint256 stakedAmount = vault.zapEtherAndStakeIMO{value: zapAmount}(pid);
+        uint256 stakedAmount = zapper.zapEtherAndStakeIMO{value: zapAmount}(pid);
         
         vm.stopPrank();
 
@@ -255,7 +264,7 @@ contract DCBVaultTest is Test {
 
         vm.startPrank(user1, user1);
         stakeToken.approve(address(vault), zapAmount);
-        vault.deposit(1, zapAmount);
+        vault.deposit(1, zapAmount, user1);
 
         // Try to withdraw before lock period
         vm.expectRevert("Stake still locked");
@@ -291,7 +300,7 @@ contract DCBVaultTest is Test {
     function testGetPricePerFullShare() public {
         vm.startPrank(user1, user1);
         stakeToken.approve(address(vault), 100 ether);
-        vault.deposit(0, 100 ether);
+        vault.deposit(0, 100 ether, user1);
         vm.stopPrank();
 
         uint256 pricePerFullShare = vault.getPricePerFullShare(0);
@@ -313,10 +322,10 @@ contract DCBVaultTest is Test {
 
         // Users deposit equal amounts
         vm.prank(user1, user1);
-        vault.deposit(POOL_ID, depositAmount);
+        vault.deposit(POOL_ID, depositAmount, user1);
 
         vm.prank(user2, user2);
-        vault.deposit(POOL_ID, depositAmount);
+        vault.deposit(POOL_ID, depositAmount, user2);
 
         // Advance time
         vm.warp(block.timestamp + 365 days);
@@ -359,7 +368,7 @@ contract DCBVaultTest is Test {
         uint256 diffUser1 = stakeTokenUser1AfterWithdraw - stakeTokenUser1BeforeWithdraw;
         assertEq(diffUser1, depositAmount);
 
-
+    
         uint256 stakeTokenUser2BeforeWithdraw = stakeToken.balanceOf(user2);
         vm.prank(user2, user2);
         vault.withdraw(0, depositAmount);
@@ -387,10 +396,10 @@ contract DCBVaultTest is Test {
 
         // Users deposit equal amounts
         vm.prank(user1, user1);
-        vault.deposit(POOL_ID, depositAmount);
+        vault.deposit(POOL_ID, depositAmount, user1);
 
         vm.prank(user2, user2);
-        vault.deposit(POOL_ID, depositAmount);
+        vault.deposit(POOL_ID, depositAmount, user2);
 
         // Advance time
         vm.warp(block.timestamp + 365 days);
@@ -461,10 +470,10 @@ contract DCBVaultTest is Test {
 
         // Users deposit equal amounts
         vm.prank(user1, user1);
-        vault.deposit(POOL_ID, depositAmount1);
+        vault.deposit(POOL_ID, depositAmount1, user1);
 
         vm.prank(user2, user2);
-        vault.deposit(POOL_ID, depositAmount2);
+        vault.deposit(POOL_ID, depositAmount2, user2);
 
         // Advance time
         vm.warp(block.timestamp + 365 days);
@@ -531,10 +540,10 @@ contract DCBVaultTest is Test {
 
         // Users deposit equal amounts
         vm.prank(user1, user1);
-        vault.deposit(POOL_ID, depositAmount1);
+        vault.deposit(POOL_ID, depositAmount1, user1);
 
         vm.prank(user2, user2);
-        vault.deposit(POOL_ID, depositAmount2);
+        vault.deposit(POOL_ID, depositAmount2, user2);
 
         // Advance time
         vm.warp(block.timestamp + 365 days);
@@ -597,7 +606,7 @@ contract DCBVaultTest is Test {
         
         vm.startPrank(user1, user1);
         stakeToken.approve(address(vault), stakeAmount);
-        vault.deposit(poolID, stakeAmount);
+        vault.deposit(poolID, stakeAmount, user1);
         vm.stopPrank();
 
         // Warp time to just before the end time
@@ -637,10 +646,10 @@ contract DCBVaultTest is Test {
 
         // Users deposit equal amounts
         vm.prank(user1, user1);
-        vault.deposit(POOL_ID, depositAmount);
+        vault.deposit(POOL_ID, depositAmount, user1);
 
         vm.prank(user2, user2);
-        vault.deposit(POOL_ID, depositAmount);
+        vault.deposit(POOL_ID, depositAmount, user2);
 
         // Advance time
         vm.warp(block.timestamp + 365 days);
@@ -674,13 +683,18 @@ contract DCBVaultTest is Test {
 
         assertApproxEqRel(user1Harvested, user2Harvested, 1e15); // Allow 0.1% difference due to rounding
 
+        // Check stakedIMO balances
+        uint256 stakedIMOUser1 = zapper.getUserImoBalanceFromPool(depositAmount) *100 / 80;
+        uint256 stakedIMOUser2 = zapper.getUserImoBalanceFromPool(depositAmount)  *100 / 80;
 
-        assertEq(stakedIMO.balanceOf(user1), depositAmount, "Staked IMO not minted correctly");
-        assertEq(stakedIMO.balanceOf(user2), depositAmount, "Staked IMO not minted correctly");
+
+
+        assertEq(stakedIMO.balanceOf(user1), stakedIMOUser1, "Staked IMO not minted correctly");
+        assertEq(stakedIMO.balanceOf(user2), stakedIMOUser2, "Staked IMO not minted correctly");
 
         vm.prank(user1, user1);
         vm.expectRevert();
-        stakedIMO.transfer(user2, depositAmount);
+        stakedIMO.transfer(user2, stakedIMOUser1);
 
 
     }
@@ -704,12 +718,16 @@ contract DCBVaultTest is Test {
         stakeToken.approve(address(vault), depositAmount1 + depositAmount2);
 
         // First deposit
-        vault.deposit(PID, depositAmount1);
+        vault.deposit(PID, depositAmount1, user1);
         
         // Second deposit
-        vault.deposit(PID, depositAmount2);
+        vault.deposit(PID, depositAmount2, user1);
 
-        assertEq(stakedIMO.balanceOf(user1), depositAmount1 + depositAmount2, "Staked IMO not minted correctly for multiple deposits");
+        // Check stakedIMO balances
+        uint256 stakedIMOUser1 = zapper.getUserImoBalanceFromPool(depositAmount1)  *100 / 80;
+        uint256 stakedIMOUser2 = zapper.getUserImoBalanceFromPool(depositAmount2)  *100 / 80;
+
+        assertEq(stakedIMO.balanceOf(user1), stakedIMOUser1 + stakedIMOUser2, "Staked IMO not minted correctly for multiple deposits");
 
         // Warp time forward by 31 days before first withdrawal
         vm.warp(block.timestamp + 31 days);
@@ -742,6 +760,8 @@ contract DCBVaultTest is Test {
         // Full withdrawal of remaining balance
         vault.withdraw(PID, depositAmount2);
         vm.stopPrank();
+
+        
 
         uint256 finalBalance = stakeToken.balanceOf(user1);
         assertEq(finalBalance - initialBalance, depositAmount1 + depositAmount2, "Full withdrawal amount incorrect");

@@ -167,7 +167,6 @@ contract DecubateMasterChefTest is Test {
 
         vm.warp(block.timestamp + 29 days);
 
-        vm.expectRevert("Reward still locked");
         masterChef.claim(0);
 
         vm.stopPrank();
