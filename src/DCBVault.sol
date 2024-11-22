@@ -15,7 +15,7 @@ import {IWETH} from "./balancer/interfaces/IWETH.sol";
  * @title DCBVault
  * @dev Vault contract for managing user deposits, staking, and rewards distribution
  */
-contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
+contract DCBVault is AccessControl, Pausable, Initializable {
   using SafeERC20 for IERC20;
 
   struct UserInfo {
@@ -48,7 +48,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
 
   uint256 public callFee; // Fee to call harvestAll function
   uint256 internal constant DIVISOR = 10000;
-  uint8 balancerPoolWeight = 75;
+  uint8 balancerPoolWeight = 80;
 
   // User staking info
   mapping(uint256 => mapping(address => UserInfo)) public users;
@@ -56,6 +56,9 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
   mapping(uint256 => PoolInfo) public pools;
 
   mapping(uint256 => uint256) public accumulatedRewardsPerShare;
+
+  // Authorized contracts to interract with the vault
+  mapping(address => bool) public authorizedContracts;
 
   // Pool rebate info
   mapping(uint256 => Rebate) public rebates;
@@ -81,6 +84,8 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
   event TokenTransferred(address token, uint256 amount);
   event DepositFee(address feeReceiver, uint256 depositFee);
   event ManagerRoleSet(address _user, bool _status);
+  event ContractAuthorizationUpdated(address indexed contractAddress, bool status);
+
 
   error NoBalance();
   error NullAmount();
@@ -93,12 +98,21 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     _;
   }
 
+
   /**
    * @notice Modifier to prevent contract interactions
    */
-  modifier notContract() {
-    require(msg.sender == tx.origin && msg.sender.code.length == 0, "contract not allowed");
+  modifier onlyAuthorizedContract() {
+    if(!(msg.sender == tx.origin && msg.sender.code.length == 0)){
+      // For contracts we require that they are authorized
+      require (authorizedContracts[msg.sender], "Not authorized");
+    }
     _;
+  }
+
+  function updateContractAuthorization(address _contract, bool _status) external onlyManager {
+        authorizedContracts[_contract] = _status;
+        emit ContractAuthorizationUpdated(_contract, _status);
   }
 
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -137,6 +151,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
     emit ManagerRoleSet(_user, _status);
   }
 
+  /*
   function zapEtherAndStakeIMO(uint256 _pid)
         external
         payable
@@ -217,6 +232,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
         return(stakedAmount);
             
     }
+  */
 
 
   /**
@@ -224,7 +240,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
    * @param _pid Pool id
    * @param _amount Amount of tokens to deposit
    */
-  function deposit(uint256 _pid, uint256 _amount) external whenNotPaused notContract {
+  function deposit(uint256 _pid, uint256 _amount) external whenNotPaused onlyAuthorizedContract {
     require(_amount > 0, "Nothing to deposit");
 
     PoolInfo storage pool = pools[_pid];
@@ -279,7 +295,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
    * @notice Withdraws all funds from the DCB Vault of a user
    * @param _pid Pool id
    */
-  function withdrawAll(uint256 _pid) external notContract {
+  function withdrawAll(uint256 _pid) external onlyAuthorizedContract {
     withdraw(_pid, users[_pid][msg.sender].shares);
   }
 
@@ -287,7 +303,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, ABalancer {
    * @notice Harvests all pools
    * @dev Only possible when contract not paused.
    */
-  function harvestAll() external notContract whenNotPaused {
+  function harvestAll() external onlyAuthorizedContract whenNotPaused {
     uint256 poolLen = masterchef.poolLength();
 
     for (uint256 pid = 0; pid < poolLen; pid++) {
@@ -404,7 +420,7 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
    * @param _pid Pool id
    * @param _shares Number of shares to withdraw
    */
-  function withdraw(uint256 _pid, uint256 _shares) public notContract {
+  function withdraw(uint256 _pid, uint256 _shares) public onlyAuthorizedContract {
 
     PoolInfo storage pool = pools[_pid];
     UserInfo storage user = users[_pid][msg.sender];
@@ -444,7 +460,7 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
    * @notice Harvests the pool rewards
    * @param _pid Pool id
    */
-  function harvest(uint256 _pid) public notContract whenNotPaused {
+  function harvest(uint256 _pid) public onlyAuthorizedContract whenNotPaused {
     PoolInfo storage pool = pools[_pid];
     UserInfo storage user = users[_pid][msg.sender];
 
