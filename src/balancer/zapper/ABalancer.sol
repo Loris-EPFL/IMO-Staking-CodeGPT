@@ -19,6 +19,9 @@ abstract contract ABalancer is EtherUtils, ReentrancyGuard {
     // Base mainnet address of IMO.
     address internal IMO = 	0x5A7a2bf9fFae199f088B25837DcD7E115CF8E1bb;
 
+    address public IMOETHBPT = 0x007bb7a4bfc214DF06474E39142288E99540f2b3;
+
+
     // Base mainnet address balanlcer vault.
     address public vault = 0xBA12222222228d8Ba445958a75a0704d566BF2C8;
     // Base mainnet id for balancer IMO-WETH pool.
@@ -80,7 +83,7 @@ abstract contract ABalancer is EtherUtils, ReentrancyGuard {
     /// @dev Converts a given amount of WETH into IMO using the specified Balancer pool.
     /// @param amount The amount of WETH to be exchanged.
     /// @param imoOutMin The minimum amount of AURA expected in return.
-    function ethToImo(uint256 amount, uint256 imoOutMin, address sender, address receiver) internal returns (uint256 amountOutCalculated) {
+    function ethToImo(uint256 amount, uint256 imoOutMin, address sender, address receiver) public returns (uint256 amountOutCalculated) {
 
         IVault.SingleSwap memory params = IVault.SingleSwap({
             poolId: poolId,
@@ -101,7 +104,7 @@ abstract contract ABalancer is EtherUtils, ReentrancyGuard {
         amountOutCalculated = IVault(vault).swap(params, funds, imoOutMin, block.timestamp);
     }
 
-    function queryJoinImoPool(uint256 EthAmount, uint256 ImoAmount, address sender, address receiver) internal returns (uint256 amountOutCalculated) {
+    function queryJoinImoPool(uint256 EthAmount, uint256 ImoAmount, address sender, address receiver) public returns (uint256 amountOutCalculated) {
         //ETH address for the pool is 0 (given pool is denomiated in ETH)
 
         IbalancerQueries.JoinPoolRequest memory request = IbalancerQueries.JoinPoolRequest({
@@ -191,5 +194,10 @@ abstract contract ABalancer is EtherUtils, ReentrancyGuard {
 
         return 0;
 
+    }
+
+    // Get the IMO balance of the user in the IMO-ETH pool (hardcoded from the poolId)
+    function getUserImoBalanceFromPool(uint256 BPTbalanceofUser) public view returns (uint256) {
+        return getUserImoBalance(msg.sender, address(IMOETHBPT), BPTbalanceofUser);
     }
 }

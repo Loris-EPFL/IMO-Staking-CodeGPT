@@ -8,6 +8,8 @@ import { DCBVault } from "./DCBVault.sol";
 import {ABalancer} from "./balancer/zapper/ABalancer.sol";
 import {Ownable} from "@openzeppelin/access/Ownable.sol";
 import {IDCBVault} from "./interfaces/IDCBVault.sol";
+import {IstIMO} from "./interfaces/IstIMO.sol";
+
 
 
 
@@ -15,11 +17,17 @@ contract Zapper is ABalancer {
     using SafeERC20 for IERC20;
 
     IERC20 public stakeTokenERC;
-    IDCBVault DCBVault;
+    IDCBVault DecubateVault;
 
-    constructor(address _bptERC20, address _DCBVault, address _owner) Ownable(_owner) {
+    IstIMO public  stIMO;
+
+    uint256 public balancerWeight = 80;
+
+
+    constructor(address _bptERC20, address _DCBVault, address _stIMO, address _owner) Ownable(_owner) {
         stakeTokenERC = IERC20(_bptERC20);
-        DCBVault = IDCBVault(_DCBVault);
+        DecubateVault = IDCBVault(_DCBVault);
+        stIMO = IstIMO(_stIMO);
     }
 
     error IncorrectAmount();
@@ -54,9 +62,7 @@ contract Zapper is ABalancer {
         if(stakedAmount == 0) revert IncorrectAmount();
 
         // Call the deposit function of DCBVault
-        DCBVault.deposit(_pid, ImoAmount);
-
-        //Mint stIMO for DAO
+        DecubateVault.deposit(_pid, stakedAmount);
 
         return stakedAmount;
     }

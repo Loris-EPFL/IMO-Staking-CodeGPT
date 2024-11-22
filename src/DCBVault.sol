@@ -11,12 +11,15 @@ import {ABalancer} from "./balancer/zapper/ABalancer.sol";
 import {Ownable} from "@openzeppelin/access/Ownable.sol";
 import {IWETH} from "./balancer/interfaces/IWETH.sol";
 import {IstIMO} from "./interfaces/IstIMO.sol";
+import {IABalancer} from "./interfaces/IABalancer.sol";
+import  "@openzeppelin/utils/ReentrancyGuard.sol";   
+
 
 /**
  * @title DCBVault
  * @dev Vault contract for managing user deposits, staking, and rewards distribution
  */
-contract DCBVault is AccessControl, Pausable, Initializable {
+contract DCBVault is AccessControl, Pausable, Initializable, Ownable, ReentrancyGuard {
   using SafeERC20 for IERC20;
 
   struct UserInfo {
@@ -48,6 +51,7 @@ contract DCBVault is AccessControl, Pausable, Initializable {
   }
 
   IDecubateMasterChef public masterchef; // MasterChef contract
+  IABalancer public zapper; // zapper contract
 
   uint256 public callFee; // Fee to call harvestAll function
   uint256 internal constant DIVISOR = 10000;
@@ -169,13 +173,15 @@ contract DCBVault is AccessControl, Pausable, Initializable {
     emit ManagerRoleSet(_user, _status);
   }
 
-  /*
+  
   /**
    * @notice Zap Ether Directly to IMO Pool
    * @param _pid Pool id
    * Amount of tokens to deposit given by payable value of ether
    * nonReentrant to prevent exploits
    */
+
+  /*
   function zapEtherAndStakeIMO(uint256 _pid)
         external
         payable
@@ -261,7 +267,7 @@ contract DCBVault is AccessControl, Pausable, Initializable {
         emit Deposit(msg.sender, _pid, stakedAmount, block.timestamp);
         return(stakedAmount);
     }
-  */
+*/
 
 
   /**
@@ -269,11 +275,12 @@ contract DCBVault is AccessControl, Pausable, Initializable {
    * @param _pid Pool id
    * @param _amount Amount of tokens to deposit
    */
-  function deposit(uint256 _pid, uint256 _amount) external whenNotPaused onlyAuthorizedContract {
+  function deposit(uint256 _pid, uint256 _amount) external whenNotPaused onlyAuthorizedContract nonReentrant {
     require(_amount > 0, "Nothing to deposit");
 
     PoolInfo storage pool = pools[_pid];
     IERC20 token;
+    IERC20 rewardsToken;
     {
       (
         ,
@@ -283,6 +290,7 @@ contract DCBVault is AccessControl, Pausable, Initializable {
         uint256 endDate,
         uint256 hardCap,
         address stakeToken,
+        address rewardToken
       ) = masterchef.poolInfo(_pid);
 
       require(totalDeposit + _amount <= hardCap, "Pool full");
@@ -290,6 +298,7 @@ contract DCBVault is AccessControl, Pausable, Initializable {
       require(block.timestamp <= stopDepo, "Staking disabled for this pool");
 
       token = IERC20(stakeToken);
+      rewardsToken = IERC20(rewardToken);
     }
 
     uint256 poolBal = balanceOf(_pid);
@@ -317,7 +326,13 @@ contract DCBVault is AccessControl, Pausable, Initializable {
 
     _earn(_pid);
 
-    stakedIMO.mint(msg.sender, _amount); //Mint same amount of stIMO for DAO
+    if(address(token) == address(rewardsToken)){
+      stakedIMO.mint(msg.sender, _amount); //Mint same amount of stIMO for DAO if deposit is IMO
+    }else{
+      uint256 IMOBalanceForBPT = zapper.getUserImoBalanceFromPool(_amount);
+      IMOBalanceForBPT = IMOBalanceForBPT * 100 / 80; //80% of the BPT is in IMO, so we adjust 100% to 80%
+      stakedIMO.mint(msg.sender, IMOBalanceForBPT); //Mint same amount of stIMO for DAO
+    }
 
     emit Deposit(msg.sender, _pid, _amount, block.timestamp);
   }
@@ -326,7 +341,7 @@ contract DCBVault is AccessControl, Pausable, Initializable {
    * @notice Withdraws all funds from the DCB Vault of a user
    * @param _pid Pool id
    */
-  function withdrawAll(uint256 _pid) external onlyAuthorizedContract {
+  function withdrawAll(uint256 _pid) external onlyAuthorizedContract nonReentrant{
     withdraw(_pid, users[_pid][msg.sender].shares);
   }
 
@@ -451,7 +466,7 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
    * @param _pid Pool id
    * @param _shares Number of shares to withdraw
    */
-  function withdraw(uint256 _pid, uint256 _shares) public onlyAuthorizedContract {
+  function withdraw(uint256 _pid, uint256 _shares) public onlyAuthorizedContract nonReentrant{
 
     PoolInfo storage pool = pools[_pid];
     UserInfo storage user = users[_pid][msg.sender];
@@ -486,7 +501,7 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
    * @notice Harvests the pool rewards
    * @param _pid Pool id
    */
-  function harvest(uint256 _pid) public onlyAuthorizedContract whenNotPaused {
+  function harvest(uint256 _pid) public onlyAuthorizedContract whenNotPaused nonReentrant{
     PoolInfo storage pool = pools[_pid];
     UserInfo storage user = users[_pid][msg.sender];
 
@@ -564,7 +579,7 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
    * @notice Stake token to the pool
    * @param _pid Pool id
    */
-  function _earn(uint256 _pid) internal {
+  function _earn(uint256 _pid) internal nonReentrant{
     uint256 bal = pools[_pid].pendingClaim;
     if (bal > 0) {
       masterchef.stake(_pid, bal);
@@ -595,5 +610,10 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
   //Setter for stIMO (for DAO purposes), only callable by owner
   function updateStakedIMO(address _stakedIMO) external onlyOwner() {
     stakedIMO = IstIMO(_stakedIMO);
+  }
+
+  //Setter for Zapper contract, only callable by owner
+  function updateZapper(address _zapper) external onlyOwner() {
+    zapper = IABalancer(_zapper);
   }
 }
