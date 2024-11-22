@@ -1,3 +1,21 @@
+ IMO Staking Contracts
+
+This repository contains the staking contracts for IMO, a Real World Asset (RWA) real estate project on the Base blockchain. The goal of the repository is to provide secure and efficient staking mechanisms for IMO tokens.
+
+## Overview
+
+There are two main contracts in this repository:
+
+1. **DCBVault.sol**: Handles user interactions and the ETH zapper functionalities.
+2. **DecubateMasterChef.sol**: Manages the locks for staking pools.
+3. **Zapper.sol**: Handles the ETH zapper functionalities + DAO minting.
+
+### Key Features
+
+- **Staking Mechanism**: Uses Balancer 80 IMO / 20 ETH BPT tokens for staking.
+- **Governance Token**: Mints a corresponding amount of stIMO, a non-transferable token for governance.
+- **Lock Duration**: Staking pools have a lock duration and provide fixed APY for stakers.
+
 ## Foundry
 
 **Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
