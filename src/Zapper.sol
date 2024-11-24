@@ -15,6 +15,7 @@ import {IstIMO} from "./interfaces/IstIMO.sol";
 
 contract Zapper is ABalancer {
     using SafeERC20 for IERC20;
+    using SafeERC20 for IWETH;
 
     IERC20 public stakeTokenERC;
     IDCBVault DecubateVault;
@@ -42,8 +43,7 @@ contract Zapper is ABalancer {
         uint256 EthAmount = msg.value - EthToZap; // 20% to remain as WETH
 
         IWETH(WETH).deposit{value: msg.value}();
-        bool isVaultApproved = IWETH(WETH).approve(vault, msg.value);
-        require(isVaultApproved, "NotApproved");
+        IERC20(WETH).safeIncreaseAllowance(vault, EthAmount);
 
         require(EthToZap > 0 && EthAmount > 0, "IncorrectAmount");
 
@@ -65,7 +65,72 @@ contract Zapper is ABalancer {
 
         return stakedAmount;
     }
-    
 
+    function zapImoAndEtherAndStakeIMO(uint256 _pid, uint256 _imoAmount) external payable returns (uint256 stakedAmount) {
+        require(msg.sender != address(0), "AddressZero");
+        require(msg.value > 0, "NullAmount");
+
+        uint256 bptBalanceBefore = stakeTokenERC.balanceOf(address(this));
+
+        uint256 EthToZap = msg.value;
+        IERC20(IMO).safeTransferFrom(msg.sender, address(this), _imoAmount);
+
+        IWETH(WETH).deposit{value: msg.value}();
+        IERC20(WETH).safeIncreaseAllowance(vault, msg.value);
+        IERC20(IMO).safeIncreaseAllowance(vault, _imoAmount);
+
+        require(EthToZap > 0 && _imoAmount > 0, "IncorrectAmount");
+
+        // Join IMO pool (IMO , WETH from user balances)
+        joinImoPoolImoEth(EthToZap, _imoAmount, address(this), address(this));
+
+        // Stake the received BPT tokens
+        stakedAmount = stakeTokenERC.balanceOf(address(this)) - bptBalanceBefore; //get new BPT balance of contract
+        if(stakedAmount == 0) revert IncorrectAmount();
+
+        stakeTokenERC.safeIncreaseAllowance(address(DecubateVault), stakedAmount);
+
+        // Call the deposit function of DCBVault
+        DecubateVault.deposit(_pid, stakedAmount, msg.sender);
+
+        return stakedAmount;
+    }
+
+    function zapUSDCAndStakeIMO(uint256 _pid, uint256 _usdcAmount) external returns (uint256 stakedAmount) {
+        require(msg.sender != address(0), "AddressZero");
+
+        uint256 bptBalanceBefore = stakeTokenERC.balanceOf(address(this));
+
+        IERC20(USDC).safeTransferFrom(msg.sender, address(this), _usdcAmount);
+
+        uint256 EthZapped = UsdcToEth(_usdcAmount, 0, address(this), address(this));
+
+        require(EthZapped > 0, "IncorrectAmount");
+
+        uint256 EthToZap = (EthZapped * 80) / 100; // 80% to zap
+        uint256 EthAmount = EthZapped - EthToZap; // 20% to remain as WETH
+
+        IERC20(WETH).safeIncreaseAllowance(vault, EthAmount);
+
+        require(EthToZap > 0 && EthAmount > 0, "IncorrectAmount");
+
+        // Zap eth to IMO
+        uint256 ImoAmount = ethToImo(EthToZap, 0, address(this), address(this));
+        require(ImoAmount > 0, "IncorrectAmount");
+
+        // Join IMO pool (IMO is given from Vault internal Balance, WETH is given from here)
+        joinImoPool(EthAmount, ImoAmount, address(this), address(this));
+
+        // Stake the received BPT tokens
+        stakedAmount = stakeTokenERC.balanceOf(address(this)) - bptBalanceBefore; //get new BPT balance of contract
+        if(stakedAmount == 0) revert IncorrectAmount();
+
+        stakeTokenERC.safeIncreaseAllowance(address(DecubateVault), stakedAmount);
+
+        // Call the deposit function of DCBVault
+        DecubateVault.deposit(_pid, stakedAmount, msg.sender);
+
+        return stakedAmount;
+    }
    
 }

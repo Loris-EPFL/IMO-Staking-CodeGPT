@@ -344,16 +344,14 @@ contract DCBVaultTest is Test {
 
         vm.prank(user1, user1);
         vault.harvest(0);
-        uint256 rewardsTokenUser1AfterHarvest = rewardsToken.balanceOf(user1);
-        uint256 user1Harvested = rewardsTokenUser1AfterHarvest - rewardsTokenUser1BeforeHarvest;
+        uint256 user1Harvested = rewardsToken.balanceOf(user1) - rewardsTokenUser1BeforeHarvest;
 
         assertApproxEqRel(user1Harvested, user1Rewards, 1e15); // Allow 0.1% difference due to rounding
 
         uint256 rewardsTokenUser2BeforeHarvest = rewardsToken.balanceOf(user2);
         vm.prank(user2, user2);
         vault.harvest(0);
-        uint256 rewardsTokenUser2AfterHarvest = rewardsToken.balanceOf(user2);
-        uint256 user2Harvested = rewardsTokenUser2AfterHarvest - rewardsTokenUser2BeforeHarvest;
+        uint256 user2Harvested = rewardsToken.balanceOf(user2) - rewardsTokenUser2BeforeHarvest;
 
         assertApproxEqRel(user2Harvested, user2Rewards, 1e15); // Allow 0.1% difference due to rounding
 
@@ -363,18 +361,16 @@ contract DCBVaultTest is Test {
         uint256 stakeTokenUser1BeforeWithdraw = stakeToken.balanceOf(user1);
         vm.prank(user1, user1);
         vault.withdraw(0, depositAmount);
-        uint256 stakeTokenUser1AfterWithdraw = stakeToken.balanceOf(user1);
 
-        uint256 diffUser1 = stakeTokenUser1AfterWithdraw - stakeTokenUser1BeforeWithdraw;
+        uint256 diffUser1 = stakeToken.balanceOf(user1) - stakeTokenUser1BeforeWithdraw;
         assertEq(diffUser1, depositAmount);
 
     
         uint256 stakeTokenUser2BeforeWithdraw = stakeToken.balanceOf(user2);
         vm.prank(user2, user2);
         vault.withdraw(0, depositAmount);
-        uint256 stakeTokenUser2AfterWithdraw = stakeToken.balanceOf(user2);
 
-        uint256 diffUser2 = stakeTokenUser2AfterWithdraw - stakeTokenUser2BeforeWithdraw;
+        uint256 diffUser2 = stakeToken.balanceOf(user2) - stakeTokenUser2BeforeWithdraw;
         assertEq(diffUser2, depositAmount);
 
         assertEq(diffUser1, diffUser2);
@@ -437,18 +433,16 @@ contract DCBVaultTest is Test {
         uint256 stakeTokenUser1BeforeWithdraw = stakeToken.balanceOf(user1);
         vm.prank(user1, user1);
         vault.withdraw(0, depositAmount);
-        uint256 stakeTokenUser1AfterWithdraw = stakeToken.balanceOf(user1);
 
-        uint256 diffUser1 = stakeTokenUser1AfterWithdraw - stakeTokenUser1BeforeWithdraw;
+        uint256 diffUser1 = stakeToken.balanceOf(user1) - stakeTokenUser1BeforeWithdraw;
         assertEq(diffUser1, depositAmount);
 
 
         uint256 stakeTokenUser2BeforeWithdraw = stakeToken.balanceOf(user2);
         vm.prank(user2, user2);
         vault.withdraw(0, depositAmount);
-        uint256 stakeTokenUser2AfterWithdraw = stakeToken.balanceOf(user2);
 
-        uint256 diffUser2 = stakeTokenUser2AfterWithdraw - stakeTokenUser2BeforeWithdraw;
+        uint256 diffUser2 = stakeToken.balanceOf(user2) - stakeTokenUser2BeforeWithdraw;
         assertEq(diffUser2, depositAmount);
 
         assertEq(diffUser1, diffUser2);
@@ -506,18 +500,16 @@ contract DCBVaultTest is Test {
         uint256 stakeTokenUser1BeforeWithdraw = stakeToken.balanceOf(user1);
         vm.prank(user1, user1);
         vault.withdraw(0, depositAmount1);
-        uint256 stakeTokenUser1AfterWithdraw = stakeToken.balanceOf(user1);
 
-        uint256 diffUser1 = stakeTokenUser1AfterWithdraw - stakeTokenUser1BeforeWithdraw;
+        uint256 diffUser1 = stakeToken.balanceOf(user1) - stakeTokenUser1BeforeWithdraw;
         assertEq(diffUser1, depositAmount1);
 
 
         uint256 stakeTokenUser2BeforeWithdraw = stakeToken.balanceOf(user2);
         vm.prank(user2, user2);
         vault.withdraw(0, depositAmount2);
-        uint256 stakeTokenUser2AfterWithdraw = stakeToken.balanceOf(user2);
 
-        uint256 diffUser2 = stakeTokenUser2AfterWithdraw - stakeTokenUser2BeforeWithdraw;
+        uint256 diffUser2 = stakeToken.balanceOf(user2) - stakeTokenUser2BeforeWithdraw;
         assertEq(diffUser2, depositAmount2);
 
         assertGt(diffUser2, diffUser1);
@@ -576,18 +568,16 @@ contract DCBVaultTest is Test {
         uint256 stakeTokenUser1BeforeWithdraw = stakeToken.balanceOf(user1);
         vm.prank(user1, user1);
         vault.withdraw(0, depositAmount1);
-        uint256 stakeTokenUser1AfterWithdraw = stakeToken.balanceOf(user1);
 
-        uint256 diffUser1 = stakeTokenUser1AfterWithdraw - stakeTokenUser1BeforeWithdraw;
+        uint256 diffUser1 = stakeToken.balanceOf(user1) - stakeTokenUser1BeforeWithdraw;
         assertEq(diffUser1, depositAmount1);
 
 
         uint256 stakeTokenUser2BeforeWithdraw = stakeToken.balanceOf(user2);
         vm.prank(user2, user2);
         vault.withdraw(0, depositAmount2);
-        uint256 stakeTokenUser2AfterWithdraw = stakeToken.balanceOf(user2);
 
-        uint256 diffUser2 = stakeTokenUser2AfterWithdraw - stakeTokenUser2BeforeWithdraw;
+        uint256 diffUser2 = stakeToken.balanceOf(user2) - stakeTokenUser2BeforeWithdraw;
         assertEq(diffUser2, depositAmount2);
 
         assertGt(diffUser2, diffUser1);

@@ -4,7 +4,8 @@ out = "out"
 libs = ["lib"]
 via_ir = true
 remappings = ['ds-test/=lib/ds-test/src/','forge-std/=lib/forge-std/src/', '@openzeppelin/=lib/openzeppelin-contracts/contracts/']                                               # a list of remappings
-
+optimize = true
+optimize_runs = 1000
 
 [rpc_endpoints]
 base = "https://mainnet.base.org"
