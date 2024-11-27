@@ -17,6 +17,7 @@ contract DCBVaultTest is Test {
     DCBVault public vault;
     DecubateMasterChef public masterChef;
     IstIMO public stakedIMO = IstIMO(0x2f10F5F8C3704270fe64BCf40dB8d9a78Ac97778);
+    address public USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
     Zapper public zapper;
     IERC20 public stakeToken;
     IERC20 public rewardsToken;
@@ -759,6 +760,72 @@ contract DCBVaultTest is Test {
 }
 
 
+    function testZapImoAndEtherAndStakeIMO(uint256 _imoAmount) public {
+        vm.assume(_imoAmount > 1e18 && _imoAmount < 1e24);
+        
+        uint256 pid = 0;
+        uint256 imoAmount = _imoAmount;
+        uint256 ethAmount = _imoAmount / 2857;
 
+        deal(user1, ethAmount);
+        deal(address(rewardsToken), user1, _imoAmount);
+        vm.startPrank(user1, user1);
+        
 
+        // Approve IMO transfer
+        IERC20(IMO).approve(address(zapper), imoAmount);
+
+        // User sends ETH and IMO to zap and stake
+        uint256 stakedAmount = zapper.zapImoAndEtherAndStakeIMO{value: ethAmount}(pid, imoAmount);
+
+        vm.warp(block.timestamp + 366 days);
+
+        vault.harvest(pid);
+        uint256 rewardsAfterEnd = rewardsToken.balanceOf(user1);
+
+        // Check that no additional rewards were produced after the end time
+
+        // Check if the staked amount is correct
+        (uint256 shares, , uint256 totalInvested, , ) = vault.users(pid, user1);
+        assertGt(stakedAmount, 0, "Staked amount should be greater than 0");
+        assertGt(shares, 0, "Shares should be greater than 0");
+
+        vm.stopPrank();
+    }
+
+    function testZapUSDCAndStakeIMO(uint256 usdcAmount) public {
+        vm.assume(usdcAmount > 1e5 && usdcAmount < 1e18);
+
+        deal(address(USDC), user1, usdcAmount);
+        vm.startPrank(user1);
+        uint256 pid = 0;
+        
+        
+
+        // Approve IMO transfer
+        IERC20(USDC).approve(address(zapper), usdcAmount);
+
+        // User sends ETH and IMO to zap and stake
+        uint256 stakedAmount = zapper.zapUSDCAndStakeIMO(pid, usdcAmount);
+
+        vm.warp(block.timestamp + 366 days);
+
+        vault.harvest(pid);
+        uint256 rewardsAfterEnd = rewardsToken.balanceOf(user1);
+
+        // Check that no additional rewards were produced after the end time
+
+        // Check if the staked amount is correct
+        (uint256 shares, , uint256 totalInvested, , ) = vault.users(pid, user1);
+        assertGt(stakedAmount, 0, "Staked amount should be greater than 0");
+        assertGt(shares, 0, "Shares should be greater than 0");
+
+        vm.stopPrank();
+    }
 }
+
+
+
+
+
+

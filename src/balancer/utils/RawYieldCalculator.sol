@@ -1,4 +1,7 @@
+pragma solidity ^0.8.26;
+
 import "@openzeppelin/utils/math/Math.sol";
+
 
 contract RawYieldCalculator {
     // Constants

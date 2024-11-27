@@ -16,12 +16,7 @@ import "../utils/WeightedPoolUserData.sol";
 abstract contract ABalancer is EtherUtils, ReentrancyGuard {
     using SafeTransferLib for ERC20;
 
-    // Base mainnet address of IMO.
-    address public IMO = 	0x5A7a2bf9fFae199f088B25837DcD7E115CF8E1bb;
-
-    address public USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
-
-    address public IMOETHBPT = 0x007bb7a4bfc214DF06474E39142288E99540f2b3;
+   
 
 
     // Base mainnet address balanlcer vault.
@@ -114,7 +109,7 @@ abstract contract ABalancer is EtherUtils, ReentrancyGuard {
     function UsdcToEth(uint256 amount, uint256 ethOutMin, address sender, address receiver) public returns (uint256 amountOutCalculated) {
 
         IVault.SingleSwap memory params = IVault.SingleSwap({
-            poolId: IMOpoolId,
+            poolId: USDCpoolId,
             kind: 0, // exact input, output given
             assetIn: USDC, //Weth adress
             assetOut: WETH,

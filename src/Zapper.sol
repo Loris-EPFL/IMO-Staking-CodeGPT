@@ -6,6 +6,7 @@ import { IERC20 } from "@openzeppelin/interfaces/IERC20.sol";
 import { IWETH } from "./balancer/interfaces/IWETH.sol";
 import { DCBVault } from "./DCBVault.sol";
 import {ABalancer} from "./balancer/zapper/ABalancer.sol";
+import {AUniswap} from "./balancer/zapper/AUniswap.sol";
 import {Ownable} from "@openzeppelin/access/Ownable.sol";
 import {IDCBVault} from "./interfaces/IDCBVault.sol";
 import {IstIMO} from "./interfaces/IstIMO.sol";
@@ -13,7 +14,8 @@ import {IstIMO} from "./interfaces/IstIMO.sol";
 
 
 
-contract Zapper is ABalancer {
+
+contract Zapper is ABalancer, AUniswap {
     using SafeERC20 for IERC20;
     using SafeERC20 for IWETH;
 
@@ -23,6 +25,7 @@ contract Zapper is ABalancer {
     IstIMO public  stIMO;
 
     uint256 public balancerWeight = 80;
+
 
 
     constructor(address _bptERC20, address _DCBVault, address _stIMO, address _owner) Ownable(_owner) {
@@ -103,7 +106,10 @@ contract Zapper is ABalancer {
 
         IERC20(USDC).safeTransferFrom(msg.sender, address(this), _usdcAmount);
 
-        uint256 EthZapped = UsdcToEth(_usdcAmount, 0, address(this), address(this));
+        //TODO: Check if the quote is successful
+        (uint256 swapQuote, ) = _quoteSwapToWETH(_usdcAmount);
+
+        uint256 EthZapped = _swapToWETH(_usdcAmount, swapQuote);
 
         require(EthZapped > 0, "IncorrectAmount");
 
