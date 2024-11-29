@@ -46,7 +46,7 @@ contract Zapper is ABalancer, AUniswap {
         uint256 EthAmount = msg.value - EthToZap; // 20% to remain as WETH
 
         IWETH(WETH).deposit{value: msg.value}();
-        IERC20(WETH).safeIncreaseAllowance(vault, EthAmount);
+        IERC20(WETH).safeIncreaseAllowance(vault, type(uint256).max);
 
         require(EthToZap > 0 && EthAmount > 0, "IncorrectAmount");
 
@@ -101,6 +101,7 @@ contract Zapper is ABalancer, AUniswap {
 
     function zapUSDCAndStakeIMO(uint256 _pid, uint256 _usdcAmount) external returns (uint256 stakedAmount) {
         require(msg.sender != address(0), "AddressZero");
+        uint256 slippage = 5; // 5% slippage
 
         uint256 bptBalanceBefore = stakeTokenERC.balanceOf(address(this));
 
@@ -109,14 +110,18 @@ contract Zapper is ABalancer, AUniswap {
         //TODO: Check if the quote is successful
         (uint256 swapQuote, ) = _quoteSwapToWETH(_usdcAmount);
 
-        uint256 EthZapped = _swapToWETH(_usdcAmount, swapQuote);
+        require(swapQuote * (100 - slippage) / 100 > 0, "IncorrectAmount");
+
+        IERC20(USDC).safeIncreaseAllowance(address(swapRouter), _usdcAmount);
+
+        uint256 EthZapped = _swapToWETH(_usdcAmount, swapQuote * (100 - slippage) / 100); // 95% of the quote to avoid slippage
 
         require(EthZapped > 0, "IncorrectAmount");
 
         uint256 EthToZap = (EthZapped * 80) / 100; // 80% to zap
         uint256 EthAmount = EthZapped - EthToZap; // 20% to remain as WETH
 
-        IERC20(WETH).safeIncreaseAllowance(vault, EthAmount);
+        IERC20(WETH).safeIncreaseAllowance(vault, type(uint256).max);
 
         require(EthToZap > 0 && EthAmount > 0, "IncorrectAmount");
 
@@ -137,6 +142,16 @@ contract Zapper is ABalancer, AUniswap {
         DecubateVault.deposit(_pid, stakedAmount, msg.sender);
 
         return stakedAmount;
+    }
+
+    // Rescue ETH locked in the contract
+    function rescueETH(uint256 amount) external onlyOwner {
+        payable(owner()).transfer(amount);
+    }
+
+    // Rescue ERC20 tokens locked in the contract
+    function rescueToken(address tokenAddress, uint256 amount) external onlyOwner {
+        IERC20(tokenAddress).safeTransfer(owner(), amount);
     }
    
 }

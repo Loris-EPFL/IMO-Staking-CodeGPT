@@ -87,7 +87,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, Ownable, Reentrancy
   );
 
   //Events
-  event Withdraw(address indexed sender, uint256 indexed poolId, uint256 amount, uint256 time);
+  event Withdraw(address indexed sender, uint256 indexed poolId, uint256 indexed amount, uint256 time);
   event Harvest(address indexed sender, uint256 indexed poolId, uint256 time);
   event WithdrawPenalty(address indexed sender, uint256 indexed poolId, uint256 amount);
   event RebateSent(address indexed sender, uint256 indexed poolId, uint256 amount);
@@ -95,7 +95,7 @@ contract DCBVault is AccessControl, Pausable, Initializable, Ownable, Reentrancy
   event Unpause();
   event CallFeeSet(uint256 callFee);
   event RebateInfoSet(uint256 pid, Rebate rebate);
-  event TokenTransferred(address token, uint256 amount);
+  event TokenTransferred(address indexed token, uint256 indexed amount);
   event DepositFee(address feeReceiver, uint256 depositFee);
   event ManagerRoleSet(address _user, bool _status);
   event ContractAuthorizationUpdated(address indexed contractAddress, bool status);
@@ -174,100 +174,6 @@ contract DCBVault is AccessControl, Pausable, Initializable, Ownable, Reentrancy
   }
 
   
-  /**
-   * @notice Zap Ether Directly to IMO Pool
-   * @param _pid Pool id
-   * Amount of tokens to deposit given by payable value of ether
-   * nonReentrant to prevent exploits
-   */
-
-  /*
-  function zapEtherAndStakeIMO(uint256 _pid)
-        external
-        payable
-        nonReentrant()
-        returns (uint256 stakedAmount)
-    {
-      if (msg.sender == address(0)) revert AddressZero();
-      if (msg.value == 0) revert NullAmount();
-      if(paused()) revert EnforcedPause();
-      
-      //Get Pool Infos
-        PoolInfo storage pool = pools[_pid];
-
-        (
-          ,
-          uint256 lockPeriodInDays,
-          uint256 totalDeposit,
-          ,
-          uint256 endDate,
-          uint256 hardCap,
-          address stakeToken,
-          
-        ) = masterchef.poolInfo(_pid);
-
-        uint256 stopDepo = endDate - (lockPeriodInDays * 1 days);
-        require(block.timestamp <= stopDepo, "Staking disabled for this pool"); //Don't allow deposit after endDate
-        
-        IERC20 stakeTokenERC = IERC20(stakeToken);
-        //Compute BPT balance of contract before zapping
-        uint256 bptBalanceBefore = stakeTokenERC.balanceOf(address(this));
-
-        uint256 EthToZap = (msg.value * balancerPoolWeight) /100;
-
-        IWETH(0x4200000000000000000000000000000000000006).deposit{value: msg.value}();
-        bool isVaultApproved = IWETH(0x4200000000000000000000000000000000000006).approve(vault, msg.value);
-        if(!isVaultApproved) revert NotApproved();
-        uint256 EthAmount = msg.value - EthToZap;
-
-        if(EthToZap == 0 || EthAmount == 0) revert IncorrectAmount();
-
-        //Zap eth to IMO
-        uint256 ImoAmount = ethToImo(EthToZap, 0, address(this), address(this)); 
-        if(ImoAmount == 0) revert IncorrectAmount();
-
-        //Join imo pool (IMO is given from Vault internal Balance, WETH is given from here)
-        joinImoPool(EthAmount, ImoAmount, address(this), address(this));
-
-        // Stake the received BPT tokens
-        stakedAmount = stakeTokenERC.balanceOf(address(this)) - bptBalanceBefore; //get new BPT balance of contract
-        if(stakedAmount == 0 || totalDeposit + stakedAmount >= hardCap) revert IncorrectAmount();
-
-        //Increase User's Pool Balance
-        uint256 poolBal = balanceOf(_pid);
-        poolBal += masterchef.payout(_pid, address(this));
-
-        uint256 currentShares = 0;
-
-        if (pool.totalShares != 0) {
-          currentShares = (stakedAmount * pool.totalShares) / poolBal;
-        } else {
-          stakeTokenERC.safeIncreaseAllowance(address(masterchef), type(uint256).max);
-          currentShares = stakedAmount;
-        }
-
-        //Update Storage
-        UserInfo storage user = users[_pid][msg.sender];
-
-        user.shares += currentShares;
-        user.lastDepositedTime = block.timestamp;
-        user.totalInvested += stakedAmount;
-
-        pool.totalShares += currentShares;
-
-        //Increase Pending Amount to Stake
-        pool.pendingClaim += stakedAmount;
-
-        //Call Internal _earn to stake
-        _earn(_pid);
-
-        //Mint same amount of stIMO for DAO
-        stakedIMO.mint(msg.sender, stakedAmount); 
-
-        emit Deposit(msg.sender, _pid, stakedAmount, block.timestamp);
-        return(stakedAmount);
-    }
-*/
 
 
   /**
@@ -324,7 +230,8 @@ contract DCBVault is AccessControl, Pausable, Initializable, Ownable, Reentrancy
     pool.totalShares += currentShares;
     pool.pendingClaim += _amount;
 
-    _earn(_pid);
+    bool isEarnSucess = _earn(_pid);
+    require(isEarnSucess, "Earn failed");
 
     //DAO mint stIMO
     if(address(token) == address(rewardsToken)){
@@ -553,7 +460,7 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
    * @param _pid Pool id
    * @return Price per full share
    */
-  function getPricePerFullShare(uint256 _pid) public view returns (uint256) {
+  function getPricePerFullShare(uint256 _pid) external view returns (uint256) {
     PoolInfo memory pool = pools[_pid];
 
     return pool.totalShares == 0 ? 1e18 : (balanceOf(_pid) * 1e18) / pool.totalShares;
@@ -588,12 +495,15 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
    * @notice Stake token to the pool
    * @param _pid Pool id
    */
-  function _earn(uint256 _pid) internal{
+  function _earn(uint256 _pid) internal returns (bool) {
     uint256 bal = pools[_pid].pendingClaim;
     if (bal > 0) {
-      masterchef.stake(_pid, bal);
+      bool isStakeSucess = masterchef.stake(_pid, bal);
+      require(isStakeSucess, "Stake failed");
       pools[_pid].pendingClaim = 0;
+      return true;
     }
+    return false;
   }
 
   /**
@@ -627,4 +537,15 @@ function getRewardOfUser(address _user, uint256 _pid) external view returns (uin
     authorizedContracts[_zapper] = true;
     emit ZapperUpdated(_zapper);
   }
+
+   // Rescue ETH locked in the contract
+    function rescueETH(uint256 amount) external onlyOwner {
+        payable(owner()).transfer(amount);
+    }
+
+    // Rescue ERC20 tokens locked in the contract
+    function rescueToken(address tokenAddress, uint256 amount) external onlyOwner {
+        IERC20(tokenAddress).safeTransfer(owner(), amount);
+    }
+  
 }

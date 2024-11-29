@@ -68,26 +68,26 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
   bytes32 internal constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
 
   //Events
-  event Stake(address indexed addr, uint256 indexed pid, uint256 amount, uint256 time);
-  event Claim(address indexed addr, uint256 indexed pid, uint256 amount, uint256 time);
-  event Reinvest(address indexed addr, uint256 indexed pid, uint256 amount, uint256 time);
-  event Unstake(address indexed addr, uint256 indexed pid, uint256 amount, uint256 time);
+  event Stake(address indexed addr, uint256 indexed pid, uint256 indexed amount, uint256 time);
+  event Claim(address indexed addr, uint256 indexed pid, uint256 indexed amount, uint256 time);
+  event Reinvest(address indexed addr, uint256 indexed pid, uint256 indexed amount, uint256 time);
+  event Unstake(address indexed addr, uint256 indexed pid, uint256 indexed amount, uint256 time);
   event FeeValueUpdated(uint8 feeValue, address feeAddress);
   event CompounderUpdated(address compounder);
   event PoolAdded(
-    uint256 apy,
-    uint256 lockPeriodInDays,
+    uint256 indexed apy,
+    uint256 indexed lockPeriodInDays,
     uint256 endDate,
     uint256 hardCap,
-    address stakeToken,
-    address rewardsToken  
+    address indexed stakeToken,
+    address  rewardsToken  
   );
   event PoolChanged(
-    uint256 pid,
+    uint256 indexed  pid,
     uint256 apy,
-    uint256 lockPeriodInDays,
+    uint256 indexed lockPeriodInDays,
     uint256 endDate,
-    uint256 hardCap,
+    uint256 indexed hardCap,
     uint256 maxTransfer
   );
   event NFTSet(
@@ -462,7 +462,7 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
   function _checkEnoughRewards(uint256 _pid, uint256 _amount) internal view {
     address token = poolInfo[_pid].rewardsToken;
     uint256 contractBalance = IERC20(token).balanceOf(address(this));
-    uint256 depositedBalance;
+    uint256 depositedBalance = 0;
     uint256 len = poolLength();
 
     for (uint256 i = 0; i < len; i++) {
@@ -482,22 +482,36 @@ contract DecubateMasterChef is AccessControl, InterestHelper, IDecubateMasterChe
    * @param stakedAmount amount to be rescued
    * @param rewardsAmount amount to be rescued
    */
-  function RescueTokens(uint256 stakedAmount, uint256 rewardsAmount, uint256 _pid) public onlyOwner {
+  function RescueTokens(uint256 stakedAmount, uint256 rewardsAmount, uint256 _pid) external onlyOwner {
     
     address stakedToken = poolInfo[_pid].stakeToken;
     address rewardsToken = poolInfo[_pid].rewardsToken;
+
+    require(stakedToken != address(0), "Invalid token");
+    require(rewardsToken != address(0), "Invalid token");
+
 
     if(stakedAmount > 0) {
       IERC20 token = IERC20(stakedToken);
       uint256 balance = token.balanceOf(address(this));
       require(balance > 0, "No tokens to rescue");
-      token.transfer(owner(), stakedAmount);
+      token.safeTransfer(owner(), stakedAmount);
     }
     if(rewardsAmount > 0) {
       IERC20 token = IERC20(rewardsToken);
       uint256 balance = token.balanceOf(address(this));
       require(balance > 0, "No tokens to rescue");
-      token.transfer(owner(), rewardsAmount);
+      token.safeTransfer(owner(), rewardsAmount);
     }
   }
+
+   // Rescue ETH locked in the contract
+    function rescueETH(uint256 amount) external onlyOwner {
+        payable(owner()).transfer(amount);
+    }
+
+    // Rescue ERC20 tokens locked in the contract
+    function rescueToken(address tokenAddress, uint256 amount) external onlyOwner {
+        IERC20(tokenAddress).safeTransfer(owner(), amount);
+    }
 }

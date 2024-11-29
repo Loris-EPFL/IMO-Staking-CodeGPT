@@ -3,6 +3,7 @@ pragma solidity >=0.8.18;
 
 import {Errors} from "./Errors.sol";
 import {ISwapRouter} from "./uniswap/ISwapRouter.sol";
+import {ISwapRouter02} from "./uniswap/ISwapRouter02.sol";
 import {IERC20 } from "@openzeppelin/interfaces/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/token/ERC20/utils/SafeERC20.sol";
 import {EtherUtils} from "../utils/EtherUtils.sol";
@@ -18,7 +19,7 @@ abstract contract AUniswap is EtherUtils{
     // The uniswap pool fee for each token.
     mapping(address => uint24) public uniswapFees;
     // Address of Uniswap V3 router
-    ISwapRouter public swapRouter = ISwapRouter(0x2626664c2603336E57B271c5C0b26F421741e481);
+    ISwapRouter02 public swapRouter = ISwapRouter02(0x2626664c2603336E57B271c5C0b26F421741e481);
     IQuoterV2 public quoteRouter = IQuoterV2(0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a);
 
     uint24 fee1 = 100; //fee tier of 0.01%
@@ -37,7 +38,7 @@ abstract contract AUniswap is EtherUtils{
     /// @param _swapRouter The address of the new router.
     function setUniswapRouter(address _swapRouter) external onlyOwner {
         if (_swapRouter == address(0)) revert Errors.ZeroAddress();
-        swapRouter = ISwapRouter(_swapRouter);
+        swapRouter = ISwapRouter02(_swapRouter);
 
         emit SetUniswapRouter(_swapRouter);
     }
@@ -69,12 +70,11 @@ abstract contract AUniswap is EtherUtils{
     /// @return amountOut The amount of DAI received from the swap.
     function _swapToWETH(uint256 amountIn, uint256 minAmountOut) internal returns (uint256 amountOut) {
 
-        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+        ISwapRouter02.ExactInputSingleParams memory params = ISwapRouter02.ExactInputSingleParams({
             tokenIn: USDC,
             tokenOut: WETH,
             fee: fee2,
             recipient: address(this),
-            deadline: block.timestamp,
             amountIn: amountIn,
             amountOutMinimum: minAmountOut,
             sqrtPriceLimitX96: 0
